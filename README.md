@@ -56,8 +56,8 @@ Im Discord Developer Portal unter **Installation**:
 - Bot-Rechte **Kanäle verwalten** und **Rollen verwalten** vergeben
 
 Die Verwaltungsbefehle sind absichtlich nur als Server-Installation und nur für Mitglieder
-mit **Kanäle verwalten** verfügbar. Eine reine Benutzerinstallation kann keine
-Server-Kategorien verwalten.
+mit **Administrator** verfügbar. Das wird sowohl bei der Command-Registrierung als auch bei
+jeder Anfrage geprüft. Eine reine Benutzerinstallation kann keine Server-Kategorien verwalten.
 
 ## Start
 

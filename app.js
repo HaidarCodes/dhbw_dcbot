@@ -19,6 +19,7 @@ import { DiscordRequest } from './utils.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ADMINISTRATOR_PERMISSION = 8n;
 
 function selectedCategoryId(options) {
   return options?.find((option) => option.name === 'kategorie')?.value;
@@ -32,6 +33,13 @@ function truncateMessage(message) {
   return message.length <= 2000
     ? message
     : `${message.slice(0, 1960)}\n… Ausgabe gekürzt`;
+}
+
+function isAdministrator(member) {
+  return (
+    member?.permissions !== undefined &&
+    (BigInt(member.permissions) & ADMINISTRATOR_PERMISSION) === ADMINISTRATOR_PERMISSION
+  );
 }
 
 function formatPreview(result) {
@@ -109,6 +117,7 @@ app.post(
       token,
       type,
       data,
+      member,
     } = req.body;
 
     if (type === InteractionType.PING) {
@@ -116,6 +125,15 @@ app.post(
     }
     if (type !== InteractionType.APPLICATION_COMMAND) {
       return res.status(400).json({ error: 'unknown interaction type' });
+    }
+    if (!isAdministrator(member)) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: 'Nur Administratoren dürfen diesen Bot verwenden.',
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
     }
 
     res.send({

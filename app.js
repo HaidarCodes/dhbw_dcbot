@@ -13,6 +13,7 @@ import {
   createMissingCourseCategories,
   listExceptions,
   previewArchivedCategories,
+  previewMissingCourseCategories,
   removeException,
 } from './archive-sync.js';
 import { DiscordRequest } from './utils.js';
@@ -20,6 +21,12 @@ import { DiscordRequest } from './utils.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMINISTRATOR_PERMISSION = 8n;
+const COLORS = {
+  info: 0x5865f2,
+  success: 0x57f287,
+  warning: 0xfee75c,
+  error: 0xed4245,
+};
 
 function selectedCategoryId(options) {
   return options?.find((option) => option.name === 'kategorie')?.value;
@@ -29,10 +36,26 @@ function formatList(values) {
   return values.length > 0 ? values.join(', ') : 'keine';
 }
 
-function truncateMessage(message) {
-  return message.length <= 2000
-    ? message
-    : `${message.slice(0, 1960)}\n… Ausgabe gekürzt`;
+function truncate(value, limit = 900) {
+  return value.length <= limit ? value : `${value.slice(0, limit - 15)}\n… gekürzt`;
+}
+
+function responseEmbed(title, description, color = COLORS.info, fields = []) {
+  return {
+    embeds: [
+      {
+        title,
+        description: truncate(description, 2400),
+        color,
+        fields: fields.map((field) => ({
+          ...field,
+          value: truncate(field.value),
+        })),
+        footer: { text: 'DHBW Discord Bot' },
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  };
 }
 
 function isAdministrator(member) {
@@ -52,28 +75,43 @@ function formatPreview(result) {
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
 
-  return truncateMessage([
-    `**Erwartete Fachkategorien:** ${formatList(result.expectedCategories)}`,
-    `**Ausnahmen:** ${formatList(exceptionNames)}`,
-    `**Lokal als archiviert gespeichert:** ${formatList(archivedNames)}`,
-    '**Würde archiviert:**',
-    ...archiveLines,
-  ].join('\n'));
+  return responseEmbed(
+    'Archivierungsvorschau',
+    archiveLines.join('\n'),
+    result.categories.length > 0 ? COLORS.warning : COLORS.success,
+    [
+      {
+        name: 'Erwartete Fachkategorien',
+        value: formatList(result.expectedCategories),
+      },
+      { name: 'Ausnahmen', value: formatList(exceptionNames) },
+      {
+        name: 'Lokal als archiviert gespeichert',
+        value: formatList(archivedNames),
+      },
+    ],
+  );
 }
 
 async function executeCommand(data) {
   switch (data.name) {
     case 'archive': {
       const result = await archiveCategory(selectedCategoryId(data.options));
-      return result.archived
-        ? `Kategorie **${result.name}** wurde archiviert.`
-        : `Kategorie **${result.name}** war bereits archiviert.`;
+      return responseEmbed(
+        result.archived ? 'Kategorie archiviert' : 'Bereits archiviert',
+        `**${result.name}** ${result.archived ? 'wurde archiviert.' : 'war bereits archiviert.'}`,
+        result.archived ? COLORS.success : COLORS.info,
+      );
     }
     case 'archiveall': {
       const result = await archiveAllOldCategories();
-      return result.categories.length > 0
-        ? `Archiviert: ${result.categories.map((name) => `**${name}**`).join(', ')}`
-        : 'Keine alten Fachkategorien gefunden.';
+      return responseEmbed(
+        'Automatische Archivierung',
+        result.categories.length > 0
+          ? result.categories.map((name) => `- **${name}**`).join('\n')
+          : 'Keine alten Fachkategorien gefunden.',
+        result.categories.length > 0 ? COLORS.success : COLORS.info,
+      );
     }
     case 'archivepreview':
       return formatPreview(await previewArchivedCategories());
@@ -81,27 +119,61 @@ async function executeCommand(data) {
       const subcommand = data.options?.[0];
       if (subcommand?.name === 'add') {
         const result = await addException(selectedCategoryId(subcommand.options));
-        return result.added
-          ? `**${result.category.name}** wird nie automatisch archiviert.`
-          : `**${result.category.name}** ist bereits eine Ausnahme.`;
+        return responseEmbed(
+          result.added ? 'Ausnahme hinzugefügt' : 'Ausnahme vorhanden',
+          `**${result.category.name}** ${
+            result.added
+              ? 'wird nie automatisch archiviert.'
+              : 'ist bereits eine Ausnahme.'
+          }`,
+          result.added ? COLORS.success : COLORS.info,
+        );
       }
       if (subcommand?.name === 'remove') {
         const categoryId = selectedCategoryId(subcommand.options);
-        return await removeException(categoryId)
-          ? 'Ausnahme wurde entfernt.'
-          : 'Für diese Kategorie war keine Ausnahme gespeichert.';
+        const removed = await removeException(categoryId);
+        return responseEmbed(
+          removed ? 'Ausnahme entfernt' : 'Keine Ausnahme gefunden',
+          removed
+            ? 'Die Kategorie kann wieder automatisch archiviert werden.'
+            : 'Für diese Kategorie war keine Ausnahme gespeichert.',
+          removed ? COLORS.success : COLORS.info,
+        );
       }
       if (subcommand?.name === 'list') {
         const exceptions = await listExceptions();
-        return `**Ausnahmen:** ${formatList(exceptions.map((item) => item.name))}`;
+        return responseEmbed(
+          'Archivierungsausnahmen',
+          exceptions.length > 0
+            ? exceptions.map((item) => `- **${item.name}**`).join('\n')
+            : 'Keine Ausnahmen gespeichert.',
+        );
       }
       throw new Error('Unknown archiveexception subcommand');
     }
     case 'createcourses': {
       const result = await createMissingCourseCategories();
-      return result.categories.length > 0
-        ? `Erstellt: ${result.categories.map((name) => `**${name}**`).join(', ')}`
-        : 'Alle erwarteten Fachkategorien existieren bereits.';
+      return responseEmbed(
+        'Fachkategorien erstellt',
+        result.categories.length > 0
+          ? result.categories
+            .map((name) => `- **${name}** mit \`general\` und \`bilder\``)
+            .join('\n')
+          : 'Alle erwarteten Fachkategorien existieren bereits.',
+        result.categories.length > 0 ? COLORS.success : COLORS.info,
+      );
+    }
+    case 'createcoursespreview': {
+      const result = await previewMissingCourseCategories();
+      return responseEmbed(
+        'Vorschau: fehlende Fachkategorien',
+        result.categories.length > 0
+          ? result.categories
+            .map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``)
+            .join('\n')
+          : 'Es fehlen keine Fachkategorien.',
+        result.categories.length > 0 ? COLORS.warning : COLORS.success,
+      );
     }
     default:
       throw new Error(`Unknown command: ${data.name}`);
@@ -130,7 +202,13 @@ app.post(
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: 'Nur Administratoren dürfen diesen Bot verwenden.',
+          embeds: [
+            {
+              title: 'Keine Berechtigung',
+              description: 'Nur Administratoren dürfen diesen Bot verwenden.',
+              color: COLORS.error,
+            },
+          ],
           flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
@@ -142,16 +220,20 @@ app.post(
     });
 
     try {
-      const content = await executeCommand(data);
+      const response = await executeCommand(data);
       await DiscordRequest(`webhooks/${applicationId}/${token}/messages/@original`, {
         method: 'PATCH',
-        body: { content },
+        body: response,
       });
     } catch (error) {
       console.error(`Command ${data.name} failed`, error);
       await DiscordRequest(`webhooks/${applicationId}/${token}/messages/@original`, {
         method: 'PATCH',
-        body: { content: 'Befehl fehlgeschlagen. Details stehen im Bot-Log.' },
+        body: responseEmbed(
+          'Befehl fehlgeschlagen',
+          'Details stehen im Bot-Log.',
+          COLORS.error,
+        ),
       });
     }
   },

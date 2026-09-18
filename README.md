@@ -15,6 +15,7 @@ keine Kategorien.
 | `/archiveexception remove kategorie` | Entfernt den Schutz |
 | `/archiveexception list` | Zeigt alle geschützten Kategorien |
 | `/createcourses` | Erstellt fehlende Fachkategorien mit `general` und `bilder` |
+| `/createcoursespreview` | Zeigt vorher, welche Fachkategorien erstellt würden |
 
 Archivieren bedeutet:
 

@@ -258,16 +258,27 @@ export async function listExceptions() {
   return state.exceptions;
 }
 
-export async function createMissingCourseCategories() {
-  const { channels, expectedCategories } = await loadContext();
+export function getMissingCategoryNames(channels, expectedCategories) {
   const existingNames = new Set(
     channels
       .filter((channel) => channel.type === CATEGORY_TYPE)
       .map((category) => normalizeName(originalCategoryName(category))),
   );
-  const missingNames = [...expectedCategories.entries()]
+  return [...expectedCategories.entries()]
     .filter(([normalizedName]) => !existingNames.has(normalizedName))
     .map(([, displayName]) => displayName);
+}
+
+export async function previewMissingCourseCategories() {
+  const { channels, expectedCategories } = await loadContext();
+  return {
+    categories: getMissingCategoryNames(channels, expectedCategories),
+  };
+}
+
+export async function createMissingCourseCategories() {
+  const { channels, expectedCategories } = await loadContext();
+  const missingNames = getMissingCategoryNames(channels, expectedCategories);
   const created = [];
 
   for (const categoryName of missingNames) {

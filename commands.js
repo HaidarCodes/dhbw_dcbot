@@ -62,6 +62,11 @@ const COMMANDS = [
     name: 'createcourses',
     description: 'Erstellt fehlende Fachkategorien mit general und bilder',
   },
+  {
+    ...GUILD_COMMAND,
+    name: 'createcoursespreview',
+    description: 'Zeigt fehlende Fachkategorien ohne sie zu erstellen',
+  },
 ];
 
 if (!process.env.APP_ID || !process.env.DISCORD_GUILD_ID) {

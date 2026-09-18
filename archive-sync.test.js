@@ -3,12 +3,27 @@ import test from 'node:test';
 import {
   buildArchivePlan,
   getExpectedCategories,
+  getMissingCategoryNames,
   normalizeName,
 } from './archive-sync.js';
 
 test('normalizes Discord and Rapla category names consistently', () => {
   assert.equal(normalizeName('  Formale Sprachen  '), 'formale-sprachen');
   assert.equal(normalizeName('Angewandte-Mathematik'), 'angewandte-mathematik');
+});
+
+test('finds expected categories that do not exist yet', () => {
+  const channels = [
+    { id: '1', type: 4, name: 'Datenbanken' },
+    { id: '2', type: 4, name: 'archived-Netztechnik' },
+  ];
+  const expected = new Map([
+    ['datenbanken', 'Datenbanken'],
+    ['netztechnik', 'Netztechnik'],
+    ['data-science', 'Data Science'],
+  ]);
+
+  assert.deepEqual(getMissingCategoryNames(channels, expected), ['Data Science']);
 });
 
 test('uses only future lecture events as expected categories', () => {

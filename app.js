@@ -198,7 +198,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Keine Kategorien würden archiviert.'];
+    : ['Keine Kategorien wurden archiviert.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(

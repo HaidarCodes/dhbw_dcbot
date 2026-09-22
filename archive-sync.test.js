@@ -154,3 +154,17 @@ test('places created courses after four fixed categories and before archives', (
     ],
   );
 });
+
+test('keeps an archived category below courses when it sits in the top slots', () => {
+  const categories = [
+    { id: 'admin', name: 'Admin' },
+    { id: 'general', name: 'Allgemein' },
+    { id: 'archive', name: 'archived-Altes Fach' },
+    { id: 'new', name: 'Datenbanken' },
+  ];
+
+  assert.deepEqual(
+    orderCreatedCategories(categories, ['new']).map(({ id }) => id),
+    ['admin', 'general', 'new', 'archive'],
+  );
+});

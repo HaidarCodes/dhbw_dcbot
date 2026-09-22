@@ -394,17 +394,27 @@ export function orderCreatedCategories(
   fixedTopCount = FIXED_TOP_CATEGORY_COUNT,
 ) {
   const createdIds = new Set(createdCategoryIds);
-  const createdCategories = categories.filter((category) =>
-    createdIds.has(category.id),
-  );
-  const existingCategories = categories.filter(
-    (category) => !createdIds.has(category.id),
-  );
+  const createdCategories = [];
+  const activeCategories = [];
+  const archivedCategories = [];
+
+  for (const category of categories) {
+    if (createdIds.has(category.id)) {
+      createdCategories.push(category);
+      continue;
+    }
+    if (isArchivedCategory(category)) {
+      archivedCategories.push(category);
+      continue;
+    }
+    activeCategories.push(category);
+  }
 
   return [
-    ...existingCategories.slice(0, fixedTopCount),
+    ...activeCategories.slice(0, fixedTopCount),
     ...createdCategories,
-    ...existingCategories.slice(fixedTopCount),
+    ...activeCategories.slice(fixedTopCount),
+    ...archivedCategories,
   ];
 }
 

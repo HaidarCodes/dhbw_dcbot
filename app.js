@@ -12,6 +12,8 @@ import {
   archiveAllOldCategories,
   archiveCategory,
   createMissingCourseCategories,
+  presentArchiveAll,
+  presentSingleArchive,
   listExceptions,
   listCourseAliases,
   listExpectedCourseNames,
@@ -198,7 +200,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Es würden keine Kategorien archiviert werden.'];
+    : ['Keine Kategorien würden archiviert werden.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(
@@ -228,29 +230,21 @@ async function executeCommand(data) {
   switch (data.name) {
     case 'archive': {
       const result = await archiveCategory(selectedCategoryId(data.options));
+      const presentation = presentSingleArchive(result);
       return responseEmbed(
-        result.archived ? 'Kategorie archiviert' : 'Bereits archiviert',
-        `**${result.name}** ${result.archived ? 'wurde archiviert.' : 'war bereits archiviert.'}`,
-        result.warnings?.length > 0
-          ? COLORS.warning
-          : result.archived
-            ? COLORS.success
-            : COLORS.info,
+        presentation.title,
+        presentation.description,
+        COLORS[presentation.tone],
         formatArchiveWarnings(result.warnings || []),
       );
     }
     case 'archiveall': {
       const result = await archiveAllOldCategories();
+      const presentation = presentArchiveAll(result);
       return responseEmbed(
-        'Automatische Archivierung',
-        result.categories.length > 0
-          ? result.categories.map((name) => `- **${name}**`).join('\n')
-          : 'Keine alten Fachkategorien gefunden.',
-        result.warnings.length > 0
-          ? COLORS.warning
-          : result.categories.length > 0
-            ? COLORS.success
-            : COLORS.info,
+        presentation.title,
+        presentation.description,
+        COLORS[presentation.tone],
         formatArchiveWarnings(result.warnings),
       );
     }

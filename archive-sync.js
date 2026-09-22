@@ -298,23 +298,81 @@ export async function previewArchivedCategories() {
   };
 }
 
+export function archiveCategoryAction(category, recordedIds) {
+  if (isArchivedCategory(category) && recordedIds.has(category.id)) {
+    return 'already';
+  }
+  return 'run';
+}
+
+export function presentSingleArchive({ outcome, name, warnings = [] }) {
+  if (outcome === 'failed') {
+    return {
+      title: 'Archivierung fehlgeschlagen',
+      description: `**${name}** konnte nicht archiviert werden.`,
+      tone: 'error',
+    };
+  }
+  if (outcome === 'already') {
+    return {
+      title: 'Bereits archiviert',
+      description: `**${name}** war bereits archiviert.`,
+      tone: 'info',
+    };
+  }
+  return {
+    title: 'Kategorie archiviert',
+    description: `**${name}** wurde archiviert.`,
+    tone: warnings.length > 0 ? 'warning' : 'success',
+  };
+}
+
+export function presentArchiveAll({ categories, warnings }) {
+  if (categories.length === 0 && warnings.length > 0) {
+    return {
+      title: 'Automatische Archivierung',
+      description: 'Keine Kategorie konnte archiviert werden.',
+      tone: 'warning',
+    };
+  }
+  if (categories.length === 0) {
+    return {
+      title: 'Automatische Archivierung',
+      description: 'Keine alten Fachkategorien gefunden.',
+      tone: 'info',
+    };
+  }
+  return {
+    title: 'Automatische Archivierung',
+    description: categories.map((name) => `- **${name}**`).join('\n'),
+    tone: warnings.length > 0 ? 'warning' : 'success',
+  };
+}
+
 export async function archiveCategory(categoryId) {
   requireConfiguration();
-  const channels = await fetchGuildChannels();
+  const [channels, state] = await Promise.all([
+    fetchGuildChannels(),
+    readState(),
+  ]);
   const category = channels.find(
     (channel) => channel.id === categoryId && channel.type === CATEGORY_TYPE,
   );
   if (!category) {
     throw new Error('The selected category does not exist');
   }
-  if (isArchivedCategory(category)) {
-    return { archived: false, name: category.name };
+
+  const recordedIds = new Set(state.archivedCategories.map((item) => item.id));
+  const name = originalCategoryName(category);
+  if (archiveCategoryAction(category, recordedIds) === 'already') {
+    return { outcome: 'already', name, warnings: [] };
   }
 
   const result = await archiveCategories([category], channels);
+  const archived = result.completed.some((item) => item.id === category.id);
   return {
-    archived: result.completed.length === 1,
-    name: category.name,
+    outcome: archived ? 'archived' : 'failed',
+    name,
     warnings: result.warnings,
   };
 }

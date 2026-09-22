@@ -20,7 +20,7 @@ import {
   removeException,
   removeCourseAlias,
 } from './archive-sync.js';
-import { DiscordApiError, DiscordRequest } from './utils.js';
+import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,26 +69,25 @@ function formatList(values) {
   return values.length > 0 ? values.join(', ') : 'keine';
 }
 
-function truncate(value, limit = 900) {
-  return value.length <= limit ? value : `${value.slice(0, limit - 15)}\n… gekürzt`;
-}
-
 function responseEmbed(title, description, color = COLORS.info, fields = []) {
-  return {
-    embeds: [
-      {
-        title,
-        description: truncate(description, 2400),
-        color,
-        fields: fields.map((field) => ({
-          ...field,
-          value: truncate(field.value),
-        })),
-        footer: { text: 'DHBW Discord Bot' },
-        timestamp: new Date().toISOString(),
-      },
-    ],
+  const footer = 'DHBW Discord Bot';
+  const fitted = clampEmbed({
+    title,
+    description,
+    fields,
+    footer,
+  });
+  const embed = {
+    title,
+    color,
+    fields: fitted.fields,
+    footer: { text: footer },
+    timestamp: new Date().toISOString(),
   };
+  if (fitted.description.length > 0) {
+    embed.description = fitted.description;
+  }
+  return { embeds: [embed] };
 }
 
 function findDiscordApiError(error) {
@@ -198,7 +197,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Es würden keine Kategorien archiviert werden.'];
+    : ['Keine Kategorien würden archiviert werden.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(

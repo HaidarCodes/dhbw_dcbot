@@ -198,7 +198,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Es würden keine Kategorien archiviert werden.'];
+    : ['Keine Kategorien würden archiviert werden.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(
@@ -220,6 +220,10 @@ function formatPreview(result) {
         value: formatList(archivedNames),
       },
       { name: 'Fachzuordnungen', value: formatList(aliasNames) },
+      {
+        name: 'Wieder öffnen',
+        value: formatList(result.restoredCategories ?? []),
+      },
     ],
   );
 }
@@ -241,14 +245,18 @@ async function executeCommand(data) {
     }
     case 'archiveall': {
       const result = await archiveAllOldCategories();
+      const lines = [
+        ...(result.restored ?? []).map((name) => `- **${name}** wurde wieder geöffnet`),
+        ...result.categories.map((name) => `- **${name}**`),
+      ];
       return responseEmbed(
         'Automatische Archivierung',
-        result.categories.length > 0
-          ? result.categories.map((name) => `- **${name}**`).join('\n')
+        lines.length > 0
+          ? lines.join('\n')
           : 'Keine alten Fachkategorien gefunden.',
         result.warnings.length > 0
           ? COLORS.warning
-          : result.categories.length > 0
+          : lines.length > 0
             ? COLORS.success
             : COLORS.info,
         formatArchiveWarnings(result.warnings),
@@ -285,26 +293,35 @@ async function executeCommand(data) {
     }
     case 'createcourses': {
       const result = await createMissingCourseCategories();
+      const lines = [
+        ...(result.restored ?? []).map((name) => `- **${name}** wurde wieder geöffnet`),
+        ...result.categories.map((name) => `- **${name}** mit \`general\` und \`bilder\``),
+      ];
       return responseEmbed(
         'Fachkategorien erstellt',
-        result.categories.length > 0
-          ? result.categories
-            .map((name) => `- **${name}** mit \`general\` und \`bilder\``)
-            .join('\n')
+        lines.length > 0
+          ? lines.join('\n')
           : 'Alle erwarteten Fachkategorien existieren bereits.',
-        result.categories.length > 0 ? COLORS.success : COLORS.info,
+        result.warnings?.length > 0
+          ? COLORS.warning
+          : lines.length > 0
+            ? COLORS.success
+            : COLORS.info,
+        formatArchiveWarnings(result.warnings ?? []),
       );
     }
     case 'createcoursespreview': {
       const result = await previewMissingCourseCategories();
+      const lines = [
+        ...(result.restored ?? []).map((name) => `- **${name}** würde wieder geöffnet`),
+        ...result.categories.map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``),
+      ];
       return responseEmbed(
         'Vorschau: fehlende Fachkategorien',
-        result.categories.length > 0
-          ? result.categories
-            .map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``)
-            .join('\n')
+        lines.length > 0
+          ? lines.join('\n')
           : 'Es fehlen keine Fachkategorien.',
-        result.categories.length > 0 ? COLORS.warning : COLORS.success,
+        lines.length > 0 ? COLORS.warning : COLORS.success,
       );
     }
     case 'coursealias': {

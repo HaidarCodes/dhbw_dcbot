@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildArchivePlan,
+  clearedReadOnlyOverwrite,
   getExpectedCategories,
   getMissingCategoryNames,
   normalizeName,
   orderCreatedCategories,
+  planActiveArchivedCategories,
+  staleArchivedRecords,
 } from './archive-sync.js';
 
 test('normalizes Discord and Rapla category names consistently', () => {
@@ -108,6 +111,61 @@ test('plans only inactive, non-exempt, non-archived categories', () => {
       children: [channels[4], channels[5]],
     },
   ]);
+});
+
+test('plans a manually reopened category for archive again', () => {
+  const channels = [
+    { id: '1', type: 4, name: 'Altes Fach', position: 0 },
+  ];
+
+  assert.deepEqual(
+    buildArchivePlan(channels, new Map(), new Set(), [], new Set(['1']))
+      .map(({ category }) => category.id),
+    ['1'],
+  );
+});
+
+test('reopens an archived category when its course is active again', () => {
+  const channels = [
+    { id: '1', type: 4, name: 'archived-Datenbanken' },
+    { id: '2', type: 4, name: 'archived-Informatik 2' },
+    { id: '3', type: 4, name: 'archived-Organisation' },
+    { id: '4', type: 4, name: 'Altes Fach' },
+  ];
+  const expected = new Map([
+    ['datenbanken', 'Datenbanken'],
+    ['software-engineering', 'Software Engineering'],
+  ]);
+  const aliases = [
+    {
+      normalizedExpectedName: 'software-engineering',
+      categoryId: '2',
+    },
+  ];
+
+  assert.deepEqual(
+    planActiveArchivedCategories(channels, expected, aliases)
+      .map((item) => item.restoredName),
+    ['Datenbanken', 'Informatik 2'],
+  );
+  assert.deepEqual(
+    staleArchivedRecords(channels, [
+      { id: '1', name: 'Datenbanken' },
+      { id: '4', name: 'Altes Fach' },
+      { id: '9', name: 'Gelöscht' },
+    ]).map((item) => item.id),
+    ['4', '9'],
+  );
+});
+
+test('removes the archive write lock without hiding the category', () => {
+  const SEND_MESSAGES = 2048n;
+  const VIEW_CHANNEL = 1024n;
+  const overwrite = clearedReadOnlyOverwrite(VIEW_CHANNEL, SEND_MESSAGES);
+
+  assert.equal(BigInt(overwrite.allow) & VIEW_CHANNEL, VIEW_CHANNEL);
+  assert.equal(BigInt(overwrite.deny) & SEND_MESSAGES, 0n);
+  assert.equal(overwrite.remove, false);
 });
 
 test('retries prefixed categories that were not recorded as completed', () => {

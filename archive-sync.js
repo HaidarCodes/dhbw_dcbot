@@ -4,6 +4,7 @@ import {
   addArchiveExceptions,
   deleteCourseAlias,
   readState,
+  forgetArchivedCategories,
   recordArchivedCategories,
   removeArchiveException,
   saveCourseAlias,
@@ -161,7 +162,7 @@ export function buildArchivePlan(
     .filter((channel) => channel.type === CATEGORY_TYPE)
     .filter(
       (category) =>
-        !archivedCategoryIds.has(category.id) &&
+        !(archivedCategoryIds.has(category.id) && isArchivedCategory(category)) &&
         !exceptionIds.has(category.id) &&
         !activeAliasCategoryIds.has(category.id) &&
         !expectedCategories.has(normalizeName(originalCategoryName(category))),
@@ -172,6 +173,51 @@ export function buildArchivePlan(
         .filter((channel) => channel.parent_id === category.id)
         .sort((a, b) => a.position - b.position),
     }));
+}
+
+export function staleArchivedRecords(channels, archivedCategories) {
+  const categoriesById = new Map(
+    channels
+      .filter((channel) => channel.type === CATEGORY_TYPE)
+      .map((category) => [category.id, category]),
+  );
+  return archivedCategories.filter((saved) => {
+    const category = categoriesById.get(saved.id);
+    return !category || !isArchivedCategory(category);
+  });
+}
+
+export function planActiveArchivedCategories(
+  channels,
+  expectedCategories,
+  aliases = [],
+) {
+  const activeAliasCategoryIds = getActiveAliasCategoryIds(
+    channels,
+    expectedCategories,
+    aliases,
+  );
+  return channels
+    .filter((channel) => channel.type === CATEGORY_TYPE && isArchivedCategory(channel))
+    .filter(
+      (category) =>
+        expectedCategories.has(normalizeName(originalCategoryName(category))) ||
+        activeAliasCategoryIds.has(category.id),
+    )
+    .map((category) => ({
+      category,
+      restoredName: originalCategoryName(category),
+    }));
+}
+
+export function clearedReadOnlyOverwrite(currentAllow = 0, currentDeny = 0) {
+  const allow = BigInt(currentAllow || 0);
+  const deny = BigInt(currentDeny || 0) & ~READ_ONLY_DENY;
+  return {
+    allow: allow.toString(),
+    deny: deny.toString(),
+    remove: allow === 0n && deny === 0n,
+  };
 }
 
 async function setChannelReadOnly(channel) {
@@ -273,8 +319,99 @@ async function archiveCategories(categories, channels) {
   return { completed, warnings };
 }
 
+async function reconcileArchivedState(channels, state) {
+  const stale = staleArchivedRecords(channels, state.archivedCategories);
+  if (stale.length === 0) return state;
+
+  const staleIds = new Set(stale.map((item) => item.id));
+  await forgetArchivedCategories([...staleIds]);
+  return {
+    ...state,
+    archivedCategories: state.archivedCategories.filter((item) => !staleIds.has(item.id)),
+  };
+}
+
+async function clearChannelReadOnly(channel) {
+  const currentOverwrite = channel.permission_overwrites?.find(
+    (overwrite) =>
+      overwrite.id === process.env.DISCORD_GUILD_ID && overwrite.type === 0,
+  );
+  if (!currentOverwrite) return;
+
+  const next = clearedReadOnlyOverwrite(currentOverwrite.allow, currentOverwrite.deny);
+  const endpoint = `channels/${channel.id}/permissions/${process.env.DISCORD_GUILD_ID}`;
+  if (next.remove) {
+    await DiscordRequest(endpoint, { method: 'DELETE' });
+    return;
+  }
+  await DiscordRequest(endpoint, {
+    method: 'PUT',
+    body: { type: 0, allow: next.allow, deny: next.deny },
+  });
+}
+
+async function restoreArchivedCategories(channels, plans) {
+  const restored = [];
+  const warnings = [];
+
+  for (const { category, restoredName } of plans) {
+    const categoryChannels = [
+      category,
+      ...channels.filter((channel) => channel.parent_id === category.id),
+    ];
+    let failed = false;
+    for (const channel of categoryChannels) {
+      try {
+        await clearChannelReadOnly(channel);
+      } catch (error) {
+        failed = true;
+        warnings.push({
+          action: 'Schreibschutz aufheben',
+          categoryName: restoredName,
+          channelName: channel.name,
+          channelId: channel.id,
+          error,
+        });
+      }
+    }
+    if (failed) continue;
+
+    try {
+      await DiscordRequest(`channels/${category.id}`, {
+        method: 'PATCH',
+        body: { name: restoredName },
+      });
+      category.name = restoredName;
+      restored.push(category);
+    } catch (error) {
+      warnings.push({
+        action: 'Kategorie umbenennen',
+        categoryName: restoredName,
+        channelName: category.name,
+        channelId: category.id,
+        error,
+      });
+    }
+  }
+
+  if (restored.length > 0) {
+    await forgetArchivedCategories(restored.map((item) => item.id));
+  }
+  return {
+    restored: restored.map((category) => originalCategoryName(category)),
+    restoredIds: restored.map((category) => category.id),
+    warnings,
+  };
+}
+
+async function loadRestorableContext() {
+  const context = await loadContext();
+  context.state = await reconcileArchivedState(context.channels, context.state);
+  return context;
+}
+
 export async function previewArchivedCategories() {
-  const { channels, state, expectedCategories } = await loadContext();
+  const { channels, state, expectedCategories } = await loadRestorableContext();
   const exceptionIds = new Set(state.exceptions.map((item) => item.id));
   const plan = buildArchivePlan(
     channels,
@@ -295,6 +432,11 @@ export async function previewArchivedCategories() {
       name: category.name,
       channels: children.map((channel) => channel.name),
     })),
+    restoredCategories: planActiveArchivedCategories(
+      channels,
+      expectedCategories,
+      state.courseAliases,
+    ).map((item) => item.restoredName),
   };
 }
 
@@ -320,7 +462,23 @@ export async function archiveCategory(categoryId) {
 }
 
 export async function archiveAllOldCategories() {
-  const { channels, state, expectedCategories } = await loadContext();
+  const context = await loadRestorableContext();
+  const restoreResult = await restoreArchivedCategories(
+    context.channels,
+    planActiveArchivedCategories(
+      context.channels,
+      context.expectedCategories,
+      context.state.courseAliases,
+    ),
+  );
+  const restoredIds = new Set(restoreResult.restoredIds);
+  const state = {
+    ...context.state,
+    archivedCategories: context.state.archivedCategories.filter(
+      (item) => !restoredIds.has(item.id),
+    ),
+  };
+  const { channels, expectedCategories } = context;
   const exceptionIds = new Set(state.exceptions.map((item) => item.id));
   const plan = buildArchivePlan(
     channels,
@@ -336,7 +494,8 @@ export async function archiveAllOldCategories() {
     : { completed: [], warnings: [] };
   return {
     categories: result.completed.map((category) => category.name),
-    warnings: result.warnings,
+    warnings: [...restoreResult.warnings, ...result.warnings],
+    restored: restoreResult.restored,
   };
 }
 
@@ -409,18 +568,32 @@ export function orderCreatedCategories(
 }
 
 export async function previewMissingCourseCategories() {
-  const { channels, expectedCategories, state } = await loadContext();
+  const { channels, expectedCategories, state } = await loadRestorableContext();
   return {
     categories: getMissingCategoryNames(
       channels,
       expectedCategories,
       state.courseAliases,
     ),
+    restored: planActiveArchivedCategories(
+      channels,
+      expectedCategories,
+      state.courseAliases,
+    ).map((item) => item.restoredName),
   };
 }
 
 export async function createMissingCourseCategories() {
-  const { channels, expectedCategories, state } = await loadContext();
+  const context = await loadRestorableContext();
+  const restoreResult = await restoreArchivedCategories(
+    context.channels,
+    planActiveArchivedCategories(
+      context.channels,
+      context.expectedCategories,
+      context.state.courseAliases,
+    ),
+  );
+  const { channels, expectedCategories, state } = context;
   const missingNames = getMissingCategoryNames(
     channels,
     expectedCategories,
@@ -473,7 +646,7 @@ export async function createMissingCourseCategories() {
     });
   }
 
-  return { categories: created };
+  return { categories: created, restored: restoreResult.restored, warnings: restoreResult.warnings };
 }
 
 export async function addCourseAlias(expectedName, categoryId) {

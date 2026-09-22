@@ -6,6 +6,7 @@ import {
   getMissingCategoryNames,
   normalizeName,
   orderCreatedCategories,
+  readOnlyOverwrite,
 } from './archive-sync.js';
 
 test('normalizes Discord and Rapla category names consistently', () => {
@@ -126,6 +127,21 @@ test('retries prefixed categories that were not recorded as completed', () => {
     ).map(({ category }) => category.id),
     ['1'],
   );
+});
+
+test('locks archived voice channels for everyone', () => {
+  const CONNECT = 1048576n;
+  const SPEAK = 2097152n;
+  const SEND_MESSAGES = 2048n;
+  const VIEW_CHANNEL = 1024n;
+  const overwrite = readOnlyOverwrite(CONNECT | SPEAK | SEND_MESSAGES, 0);
+
+  assert.equal((BigInt(overwrite.deny) & CONNECT) === CONNECT, true);
+  assert.equal((BigInt(overwrite.deny) & SPEAK) === SPEAK, true);
+  assert.equal((BigInt(overwrite.deny) & SEND_MESSAGES) === SEND_MESSAGES, true);
+  assert.equal((BigInt(overwrite.allow) & VIEW_CHANNEL) === VIEW_CHANNEL, true);
+  assert.equal(BigInt(overwrite.allow) & CONNECT, 0n);
+  assert.equal(BigInt(overwrite.allow) & SPEAK, 0n);
 });
 
 test('places created courses after four fixed categories and before archives', () => {

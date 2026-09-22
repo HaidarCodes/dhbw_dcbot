@@ -16,12 +16,16 @@ const ARCHIVED_PREFIX = process.env.ARCHIVED_PREFIX || 'archived-';
 const VIEW_CHANNEL = 1024n;
 const SEND_MESSAGES = 2048n;
 const READ_MESSAGE_HISTORY = 65536n;
+const CONNECT = 1048576n;
+const SPEAK = 2097152n;
 const CREATE_PUBLIC_THREADS = 34359738368n;
 const CREATE_PRIVATE_THREADS = 68719476736n;
 const SEND_MESSAGES_IN_THREADS = 274877906944n;
 const READ_ONLY_ALLOW = VIEW_CHANNEL | READ_MESSAGE_HISTORY;
 const READ_ONLY_DENY =
   SEND_MESSAGES |
+  CONNECT |
+  SPEAK |
   CREATE_PUBLIC_THREADS |
   CREATE_PRIVATE_THREADS |
   SEND_MESSAGES_IN_THREADS;
@@ -174,13 +178,20 @@ export function buildArchivePlan(
     }));
 }
 
+export function readOnlyOverwrite(currentAllow = 0, currentDeny = 0) {
+  const allow = BigInt(currentAllow || 0);
+  const deny = BigInt(currentDeny || 0);
+  return {
+    allow: ((allow | READ_ONLY_ALLOW) & ~READ_ONLY_DENY).toString(),
+    deny: ((deny | READ_ONLY_DENY) & ~READ_ONLY_ALLOW).toString(),
+  };
+}
+
 async function setChannelReadOnly(channel) {
   const currentOverwrite = channel.permission_overwrites?.find(
     (overwrite) =>
       overwrite.id === process.env.DISCORD_GUILD_ID && overwrite.type === 0,
   );
-  const currentAllow = BigInt(currentOverwrite?.allow || 0);
-  const currentDeny = BigInt(currentOverwrite?.deny || 0);
 
   await DiscordRequest(
     `channels/${channel.id}/permissions/${process.env.DISCORD_GUILD_ID}`,
@@ -188,8 +199,7 @@ async function setChannelReadOnly(channel) {
       method: 'PUT',
       body: {
         type: 0,
-        allow: ((currentAllow | READ_ONLY_ALLOW) & ~READ_ONLY_DENY).toString(),
-        deny: ((currentDeny | READ_ONLY_DENY) & ~READ_ONLY_ALLOW).toString(),
+        ...readOnlyOverwrite(currentOverwrite?.allow, currentOverwrite?.deny),
       },
     },
   );

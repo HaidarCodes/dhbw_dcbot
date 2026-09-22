@@ -36,9 +36,14 @@ export function normalizeName(value) {
   return value
     .trim()
     .toLocaleLowerCase('de-DE')
+    .replaceAll('ä', 'ae')
+    .replaceAll('ö', 'oe')
+    .replaceAll('ü', 'ue')
+    .replaceAll('ß', 'ss')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ß/g, 'ss')
+    .replaceAll('+', 'plus')
+    .replaceAll('#', 'sharp')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }

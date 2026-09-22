@@ -11,6 +11,14 @@ import {
 test('normalizes Discord and Rapla category names consistently', () => {
   assert.equal(normalizeName('  Formale Sprachen  '), 'formale-sprachen');
   assert.equal(normalizeName('Angewandte-Mathematik'), 'angewandte-mathematik');
+  assert.equal(normalizeName('Übung'), 'uebung');
+  assert.equal(normalizeName('Uebung'), 'uebung');
+  assert.equal(normalizeName('Ubung'), 'ubung');
+  assert.equal(normalizeName('Straße'), 'strasse');
+  assert.equal(normalizeName('Strasse'), 'strasse');
+  assert.equal(normalizeName('C++'), 'cplusplus');
+  assert.equal(normalizeName('C#'), 'csharp');
+  assert.equal(normalizeName('C'), 'c');
 });
 
 test('finds expected categories that do not exist yet', () => {

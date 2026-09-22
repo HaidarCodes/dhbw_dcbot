@@ -246,11 +246,12 @@ async function archiveCategories(categories, channels) {
       category,
       ...channels.filter((channel) => channel.parent_id === category.id),
     ];
+    const lockWarnings = [];
     for (const channel of categoryChannels) {
       try {
         await setChannelReadOnly(channel);
       } catch (error) {
-        warnings.push({
+        lockWarnings.push({
           action: 'Schreibschutz setzen',
           categoryName: originalCategoryName(category),
           channelName: channel.name,
@@ -259,7 +260,10 @@ async function archiveCategories(categories, channels) {
         });
       }
     }
-    completed.push(category);
+    warnings.push(...lockWarnings);
+    if (lockWarnings.length === 0) {
+      completed.push(category);
+    }
   }
 
   if (completed.length > 0) {

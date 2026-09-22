@@ -198,7 +198,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Es würden keine Kategorien archiviert werden.'];
+    : ['Keine Kategorien würden archiviert werden.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(
@@ -228,26 +228,42 @@ async function executeCommand(data) {
   switch (data.name) {
     case 'archive': {
       const result = await archiveCategory(selectedCategoryId(data.options));
+      const failed = !result.archived && result.warnings?.length > 0;
       return responseEmbed(
-        result.archived ? 'Kategorie archiviert' : 'Bereits archiviert',
-        `**${result.name}** ${result.archived ? 'wurde archiviert.' : 'war bereits archiviert.'}`,
-        result.warnings?.length > 0
-          ? COLORS.warning
-          : result.archived
-            ? COLORS.success
-            : COLORS.info,
+        result.archived
+          ? 'Kategorie archiviert'
+          : failed
+            ? 'Archivierung fehlgeschlagen'
+            : 'Bereits archiviert',
+        result.archived
+          ? `**${result.name}** wurde archiviert.`
+          : failed
+            ? `**${result.name}** konnte nicht archiviert werden.`
+            : `**${result.name}** war bereits archiviert.`,
+        failed
+          ? COLORS.error
+          : result.warnings?.length > 0
+            ? COLORS.warning
+            : result.archived
+              ? COLORS.success
+              : COLORS.info,
         formatArchiveWarnings(result.warnings || []),
       );
     }
     case 'archiveall': {
       const result = await archiveAllOldCategories();
+      const failed = result.categories.length === 0 && result.warnings.length > 0;
       return responseEmbed(
         'Automatische Archivierung',
         result.categories.length > 0
           ? result.categories.map((name) => `- **${name}**`).join('\n')
-          : 'Keine alten Fachkategorien gefunden.',
+          : failed
+            ? 'Keine Kategorie konnte archiviert werden.'
+            : 'Keine alten Fachkategorien gefunden.',
         result.warnings.length > 0
-          ? COLORS.warning
+          ? failed
+            ? COLORS.error
+            : COLORS.warning
           : result.categories.length > 0
             ? COLORS.success
             : COLORS.info,

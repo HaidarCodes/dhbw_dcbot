@@ -198,7 +198,7 @@ function formatPreview(result) {
       ({ name, channels }) =>
         `- **${name}**: ${formatList(channels)}`,
     )
-    : ['Es würden keine Kategorien archiviert werden.'];
+    : ['Keine Kategorien würden archiviert werden.'];
   const exceptionNames = result.exceptions.map((exception) => exception.name);
   const archivedNames = result.archivedCategories.map((category) => category.name);
   const aliasNames = result.courseAliases.map(
@@ -285,26 +285,52 @@ async function executeCommand(data) {
     }
     case 'createcourses': {
       const result = await createMissingCourseCategories();
+      for (const failure of result.failures ?? []) {
+        console.warn(JSON.stringify({
+          event: 'course_create_failed',
+          name: failure.name,
+          message: failure.message,
+        }));
+      }
+      const lines = [
+        ...result.categories.map((name) => `- **${name}** mit \`general\` und \`bilder\``),
+        ...(result.repaired ?? []).map(
+          (item) => `- **${item.name}**: ${item.channels.map((name) => `\`${name}\``).join(', ')} ergänzt`,
+        ),
+        ...(result.tooLong ?? []).map(
+          (name) => `- **${name}** ist länger als 100 Zeichen und wurde übersprungen`,
+        ),
+        ...(result.failures ?? []).map(
+          (item) => `- **${item.name}** konnte nicht fertiggestellt werden`,
+        ),
+      ];
+      const trouble = (result.tooLong?.length ?? 0) + (result.failures?.length ?? 0) > 0;
+      const changed = result.categories.length > 0 || (result.repaired?.length ?? 0) > 0;
       return responseEmbed(
         'Fachkategorien erstellt',
-        result.categories.length > 0
-          ? result.categories
-            .map((name) => `- **${name}** mit \`general\` und \`bilder\``)
-            .join('\n')
+        lines.length > 0
+          ? lines.join('\n')
           : 'Alle erwarteten Fachkategorien existieren bereits.',
-        result.categories.length > 0 ? COLORS.success : COLORS.info,
+        trouble ? COLORS.warning : changed ? COLORS.success : COLORS.info,
       );
     }
     case 'createcoursespreview': {
       const result = await previewMissingCourseCategories();
+      const lines = [
+        ...result.categories.map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``),
+        ...(result.repairs ?? []).map(
+          (item) => `- **${item.name}**: ${item.missing.map((name) => `\`${name}\``).join(', ')} fehlt`,
+        ),
+        ...(result.tooLong ?? []).map(
+          (name) => `- **${name}** ist länger als 100 Zeichen`,
+        ),
+      ];
       return responseEmbed(
         'Vorschau: fehlende Fachkategorien',
-        result.categories.length > 0
-          ? result.categories
-            .map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``)
-            .join('\n')
+        lines.length > 0
+          ? lines.join('\n')
           : 'Es fehlen keine Fachkategorien.',
-        result.categories.length > 0 ? COLORS.warning : COLORS.success,
+        lines.length > 0 ? COLORS.warning : COLORS.success,
       );
     }
     case 'coursealias': {

@@ -3,8 +3,10 @@ import { DiscordRequest } from './utils.js';
 import {
   addArchiveExceptions,
   deleteCourseAlias,
+  forgetCategoryOrder,
   readState,
   recordArchivedCategories,
+  rememberCategoryOrder,
   removeArchiveException,
   saveCourseAlias,
 } from './state-store.js';
@@ -12,6 +14,8 @@ import {
 const CATEGORY_TYPE = 4;
 const TEXT_CHANNEL_TYPE = 0;
 const FIXED_TOP_CATEGORY_COUNT = 4;
+const DEFAULT_COURSE_CHANNELS = ['general', 'bilder'];
+const DISCORD_CHANNEL_NAME_LIMIT = 100;
 const ARCHIVED_PREFIX = process.env.ARCHIVED_PREFIX || 'archived-';
 const VIEW_CHANNEL = 1024n;
 const SEND_MESSAGES = 2048n;
@@ -408,72 +412,125 @@ export function orderCreatedCategories(
   ];
 }
 
+export function planCourseSetup(channels, expectedCategories, aliases = []) {
+  const creatable = [];
+  const tooLong = [];
+  for (const name of getMissingCategoryNames(channels, expectedCategories, aliases)) {
+    if (name.length > DISCORD_CHANNEL_NAME_LIMIT) tooLong.push(name);
+    else creatable.push(name);
+  }
+
+  const repairs = [];
+  for (const channel of channels) {
+    if (channel.type !== CATEGORY_TYPE || isArchivedCategory(channel)) continue;
+    if (!expectedCategories.has(normalizeName(originalCategoryName(channel)))) continue;
+    const children = channels.filter((child) => child.parent_id === channel.id);
+    if (children.some((child) => !DEFAULT_COURSE_CHANNELS.includes(child.name))) continue;
+    const missing = DEFAULT_COURSE_CHANNELS.filter(
+      (name) => !children.some((child) => child.name === name),
+    );
+    if (missing.length > 0) {
+      repairs.push({ id: channel.id, name: channel.name, missing });
+    }
+  }
+
+  return { creatable, tooLong, repairs };
+}
+
+async function createCourseChannel(parentId, name) {
+  await DiscordRequest(`guilds/${process.env.DISCORD_GUILD_ID}/channels`, {
+    method: 'POST',
+    body: {
+      name,
+      type: TEXT_CHANNEL_TYPE,
+      parent_id: parentId,
+    },
+  });
+}
+
 export async function previewMissingCourseCategories() {
   const { channels, expectedCategories, state } = await loadContext();
+  const plan = planCourseSetup(channels, expectedCategories, state.courseAliases);
   return {
-    categories: getMissingCategoryNames(
-      channels,
-      expectedCategories,
-      state.courseAliases,
-    ),
+    categories: plan.creatable,
+    repairs: plan.repairs,
+    tooLong: plan.tooLong,
   };
 }
 
 export async function createMissingCourseCategories() {
   const { channels, expectedCategories, state } = await loadContext();
-  const missingNames = getMissingCategoryNames(
-    channels,
-    expectedCategories,
-    state.courseAliases,
-  );
+  const plan = planCourseSetup(channels, expectedCategories, state.courseAliases);
   const created = [];
+  const repaired = [];
+  const failures = [];
   const createdCategoryIds = [];
 
-  for (const categoryName of missingNames) {
-    const categoryResponse = await DiscordRequest(
-      `guilds/${process.env.DISCORD_GUILD_ID}/channels`,
-      {
-        method: 'POST',
-        body: { name: categoryName, type: CATEGORY_TYPE },
-      },
-    );
-    const category = await categoryResponse.json();
-
-    for (const name of ['general', 'bilder']) {
-      await DiscordRequest(`guilds/${process.env.DISCORD_GUILD_ID}/channels`, {
+  for (const categoryName of plan.creatable) {
+    try {
+      const categoryResponse = await DiscordRequest(
+        `guilds/${process.env.DISCORD_GUILD_ID}/channels`,
+        {
           method: 'POST',
-          body: {
-            name,
-            type: TEXT_CHANNEL_TYPE,
-            parent_id: category.id,
-          },
-      });
+          body: { name: categoryName, type: CATEGORY_TYPE },
+        },
+      );
+      const category = await categoryResponse.json();
+      await rememberCategoryOrder([category.id]);
+      for (const name of DEFAULT_COURSE_CHANNELS) {
+        await createCourseChannel(category.id, name);
+      }
+      created.push(categoryName);
+      createdCategoryIds.push(category.id);
+    } catch (error) {
+      failures.push({ name: categoryName, message: error.message });
     }
-    created.push(categoryName);
-    createdCategoryIds.push(category.id);
   }
 
-  if (created.length > 0) {
-    const updatedChannels = await fetchGuildChannels();
-    const orderedCategories = updatedChannels
-      .filter((channel) => channel.type === CATEGORY_TYPE)
-      .sort((a, b) => a.position - b.position);
-    const reorderedCategories = orderCreatedCategories(
-      orderedCategories,
-      createdCategoryIds,
-    );
-    const positions = orderedCategories.map((category) => category.position);
-
-    await DiscordRequest(`guilds/${process.env.DISCORD_GUILD_ID}/channels`, {
-      method: 'PATCH',
-      body: reorderedCategories.map((category, index) => ({
-        id: category.id,
-        position: positions[index],
-      })),
-    });
+  for (const repair of plan.repairs) {
+    try {
+      for (const name of repair.missing) {
+        await createCourseChannel(repair.id, name);
+      }
+      repaired.push({ name: repair.name, channels: repair.missing });
+    } catch (error) {
+      failures.push({ name: repair.name, message: error.message });
+    }
   }
 
-  return { categories: created };
+  const orderIds = [...new Set([
+    ...createdCategoryIds,
+    ...state.pendingCategoryOrderIds,
+    ...plan.repairs.map((repair) => repair.id),
+  ])];
+  if (orderIds.length > 0) {
+    try {
+      await rememberCategoryOrder(orderIds);
+      const updatedChannels = await fetchGuildChannels();
+      const orderedCategories = updatedChannels
+        .filter((channel) => channel.type === CATEGORY_TYPE)
+        .sort((a, b) => a.position - b.position);
+      const reorderedCategories = orderCreatedCategories(orderedCategories, orderIds);
+      const positions = orderedCategories.map((category) => category.position);
+      await DiscordRequest(`guilds/${process.env.DISCORD_GUILD_ID}/channels`, {
+        method: 'PATCH',
+        body: reorderedCategories.map((category, index) => ({
+          id: category.id,
+          position: positions[index],
+        })),
+      });
+      await forgetCategoryOrder(orderIds);
+    } catch (error) {
+      failures.push({ name: 'Sortierung', message: error.message });
+    }
+  }
+
+  return {
+    categories: created,
+    repaired,
+    tooLong: plan.tooLong,
+    failures,
+  };
 }
 
 export async function addCourseAlias(expectedName, categoryId) {

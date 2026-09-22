@@ -10,6 +10,7 @@ function emptyState() {
     exceptions: [],
     archivedCategories: [],
     courseAliases: [],
+    pendingCategoryOrderIds: [],
   };
 }
 
@@ -22,6 +23,9 @@ export async function readState() {
         ? state.archivedCategories
         : [],
       courseAliases: Array.isArray(state.courseAliases) ? state.courseAliases : [],
+      pendingCategoryOrderIds: Array.isArray(state.pendingCategoryOrderIds)
+        ? state.pendingCategoryOrderIds
+        : [],
     };
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -121,5 +125,22 @@ export function deleteCourseAlias(normalizedExpectedName) {
       (item) => item.normalizedExpectedName !== normalizedExpectedName,
     );
     return state.courseAliases.length !== previousLength;
+  });
+}
+
+export function rememberCategoryOrder(categoryIds) {
+  return mutateState((state) => {
+    const pending = new Set(state.pendingCategoryOrderIds);
+    for (const categoryId of categoryIds) pending.add(categoryId);
+    state.pendingCategoryOrderIds = [...pending];
+  });
+}
+
+export function forgetCategoryOrder(categoryIds) {
+  const remove = new Set(categoryIds);
+  return mutateState((state) => {
+    state.pendingCategoryOrderIds = state.pendingCategoryOrderIds.filter(
+      (categoryId) => !remove.has(categoryId),
+    );
   });
 }

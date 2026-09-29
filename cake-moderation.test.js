@@ -66,9 +66,24 @@ test('posts a persistent cake quote and reacts with a cross', async () => {
 
   assert.equal(await handleCakeMessage(message, 'guild'), true);
   assert.equal(sent[0].content, '<@author> bringt kuchen mit! 🎉');
+  assert.equal(sent[0].embeds[0].title, 'Ursprüngliche Nachricht');
   assert.equal(sent[0].embeds[0].description, '> Ich bringe \\*\\*Kuchen\\*\\* mit.');
   assert.deepEqual(sent[0].allowedMentions, { users: ['author'] });
   assert.deepEqual(reactions, ['❌']);
+});
+
+test('keeps quoted messages inside the Discord embed description limit', async () => {
+  let sent;
+  const target = cakeChannel(async (payload) => {
+    sent = payload;
+    return { react: async () => undefined };
+  });
+  const sourceContent = Array(1000).fill('*').join('\n');
+
+  await postCakeAnnouncement({ channels: { cache: [target] } }, 'author', sourceContent);
+
+  assert.ok(sent.embeds[0].description.length <= 4096);
+  assert.match(sent.embeds[0].description, /… gekürzt$/u);
 });
 
 test('rejects an invalid user for manual cake announcements', async () => {
@@ -85,6 +100,7 @@ test('posts a manual cake announcement for a selected user', async () => {
   await postCakeAnnouncement({ channels: { cache: [target] } }, 'selected-user');
 
   assert.equal(sent[0].content, '<@selected-user> bringt kuchen mit! 🎉');
+  assert.equal(sent[0].embeds[0].title, 'Manueller Eintrag');
   assert.equal(
     sent[0].embeds[0].description,
     'Manuell von einem Administrator eingetragen.',

@@ -7,9 +7,11 @@ import {
   Partials,
   PermissionFlagsBits,
 } from 'discord.js';
+import { truncateText } from './utils.js';
 
 const CAKE_REACTION = '❌';
 const CAKE_MARKER = 'DHBW Kuchenmeldung';
+const CAKE_QUOTE_LIMIT = 4096;
 const CAKE_WORD = /\bkuchen\b/iu;
 const UNCERTAIN_CAKE = /[?]|\b(?:vielleicht|eventuell|könnte|würde|soll|kann)\b/iu;
 const NEGATED_CAKE = /\b(?:kein(?:e|en|em|er|es)?\s+kuchen|nicht)\b/iu;
@@ -56,11 +58,11 @@ export function canDeleteCakeAnnouncement(isAdministrator, reactorId, authorId) 
 }
 
 function quoteMessage(content) {
-  const trimmed = escapeMarkdown(content.trim().slice(0, 1000));
-  return trimmed
+  const quoted = escapeMarkdown(content.trim())
     .split('\n')
     .map((line) => `> ${line}`)
     .join('\n');
+  return truncateText(quoted, CAKE_QUOTE_LIMIT);
 }
 
 export async function postCakeAnnouncement(guild, userId, sourceContent) {
@@ -70,6 +72,7 @@ export async function postCakeAnnouncement(guild, userId, sourceContent) {
   }
 
   const embed = {
+    title: sourceContent ? 'Ursprüngliche Nachricht' : 'Manueller Eintrag',
     description: sourceContent
       ? quoteMessage(sourceContent)
       : 'Manuell von einem Administrator eingetragen.',

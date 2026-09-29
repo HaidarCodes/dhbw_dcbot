@@ -23,6 +23,7 @@ import {
   removeCourseAlias,
 } from './archive-sync.js';
 import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
+import { startCakeModeration } from './cake-moderation.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -502,6 +503,10 @@ app.post(
     }
   },
 );
+
+startCakeModeration().catch((error) => {
+  console.error('Cake moderation gateway failed', error);
+});
 
 app.listen(PORT, () => {
   console.log('Listening on port', PORT);

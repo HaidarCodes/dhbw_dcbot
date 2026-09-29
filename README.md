@@ -50,6 +50,11 @@ Der Bot berücksichtigt nur zukünftige Einträge mit `entityType: "LECTURE"`. `
 Ausnahmen, Aliase und archivierte Kategorien speichert der Bot in
 `data/archive-state.json`. Die Datei wird automatisch erstellt und nicht von Git erfasst.
 
+Enthält eine Nachricht das eigenständige Wort `kuchen`, kopiert der Bot den Text nach
+`Information/kuchen` und schreibt, wer Kuchen mitbringt. Die Kopie bleibt erhalten, wenn die
+ursprüngliche Nachricht gelöscht wird. Der Bot versieht die Kopie mit ❌. Ein Administrator,
+der nicht selbst die ursprüngliche Nachricht geschrieben hat, kann sie damit löschen.
+
 Ein Alias wie `Software Engineering → Informatik 2` verhindert, dass `/createcourses` eine
 zweite Kategorie erstellt oder `/archiveall` die zugeordnete Kategorie archiviert, solange
 das Fach in Rapla aktiv ist.
@@ -58,12 +63,15 @@ das Fach in Rapla aktiv ist.
 
 1. Im [Discord Developer Portal](https://discord.com/developers/applications) eine App
    erstellen.
-2. Unter **Bot** einen Token erzeugen. Für eine private App **Public Bot** deaktiviert lassen.
+2. Unter **Bot** einen Token erzeugen, **Message Content Intent** aktivieren und für eine private
+   App **Public Bot** deaktiviert lassen.
 3. Unter **Installation** den **Install Link** auf **None** setzen.
 4. Im **OAuth2 URL Generator** die Scopes `bot` und `applications.commands` auswählen.
-5. Die Bot-Rechte **Kanäle verwalten** und **Rollen verwalten** auswählen und den Bot über die
-   erzeugte URL auf den Server einladen.
-6. In Discord den Entwicklermodus aktivieren und über das Kontextmenü des Servers die
+5. Die Bot-Rechte **Kanäle verwalten**, **Rollen verwalten**, **Kanäle ansehen**,
+   **Nachrichten senden**, **Nachrichtenverlauf anzeigen** und **Reaktionen hinzufügen** auswählen
+   und den Bot über die erzeugte URL auf den Server einladen.
+6. Unter der Kategorie `Information` einen Textkanal namens `kuchen` anlegen.
+7. In Discord den Entwicklermodus aktivieren und über das Kontextmenü des Servers die
    Server-ID kopieren.
 
 Benötigt werden Application ID, Public Key, Bot-Token und Server-ID.

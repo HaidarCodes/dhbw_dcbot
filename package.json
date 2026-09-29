@@ -12,14 +12,15 @@
     "start": "node app.js",
     "register": "node commands.js",
     "dev": "nodemon app.js",
-    "check": "node --check app.js && node --check archive-sync.js && node --check commands.js && node --check state-store.js && node --check utils.js",
+    "check": "node --check app.js && node --check archive-sync.js && node --check cake-moderation.js && node --check commands.js && node --check state-store.js && node --check utils.js",
     "test": "node --test"
   },
   "license": "MIT",
   "dependencies": {
     "discord-interactions": "^4.0.0",
+    "discord.js": "14.27.0",
     "dotenv": "^16.0.3",
-    "express": "^4.18.2"
+    "express": "4.22.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

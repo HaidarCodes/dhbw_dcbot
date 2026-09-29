@@ -8,6 +8,7 @@ Befehle sind auf Administratoren beschränkt.
 
 | Befehl | Funktion |
 | --- | --- |
+| `/cake username` | Meldet manuell, wer Kuchen mitbringt |
 | `/createcoursespreview` | Zeigt fehlende Fachkategorien |
 | `/createcourses` | Erstellt fehlende Kategorien mit `general` und `bilder` |
 | `/archivepreview` | Zeigt geplante Archivierungen |
@@ -52,8 +53,9 @@ Ausnahmen, Aliase und archivierte Kategorien speichert der Bot in
 
 Enthält eine Nachricht das eigenständige Wort `kuchen`, kopiert der Bot den Text nach
 `Information/kuchen` und schreibt, wer Kuchen mitbringt. Die Kopie bleibt erhalten, wenn die
-ursprüngliche Nachricht gelöscht wird. Der Bot versieht die Kopie mit ❌. Ein Administrator,
-der nicht selbst die ursprüngliche Nachricht geschrieben hat, kann sie damit löschen.
+ursprüngliche Nachricht gelöscht wird. Administratoren können dieselbe Meldung mit
+`/cake username` manuell erstellen. Der Bot versieht jede Kuchenmeldung mit ❌. Ein Administrator,
+der nicht selbst als Kuchenbringer eingetragen ist, kann sie damit löschen.
 
 Ein Alias wie `Software Engineering → Informatik 2` verhindert, dass `/createcourses` eine
 zweite Kategorie erstellt oder `/archiveall` die zugeordnete Kategorie archiviert, solange

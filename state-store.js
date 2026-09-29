@@ -103,6 +103,15 @@ export function recordArchivedCategories(categories) {
   });
 }
 
+export function forgetArchivedCategories(categoryIds) {
+  const remove = new Set(categoryIds);
+  return mutateState((state) => {
+    state.archivedCategories = state.archivedCategories.filter(
+      (item) => !remove.has(item.id),
+    );
+  });
+}
+
 export function saveCourseAlias(alias) {
   return mutateState((state) => {
     const normalizedExpectedName = alias.normalizedExpectedName;

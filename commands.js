@@ -19,6 +19,19 @@ const CATEGORY_OPTION = {
 const COMMANDS = [
   {
     ...GUILD_COMMAND,
+    name: 'cake',
+    description: 'Trägt ein, wer Kuchen mitbringt',
+    options: [
+      {
+        type: 6,
+        name: 'username',
+        description: 'Person, die Kuchen mitbringt',
+        required: true,
+      },
+    ],
+  },
+  {
+    ...GUILD_COMMAND,
     name: 'archive',
     description: 'Archiviert eine Kategorie',
     options: [CATEGORY_OPTION],

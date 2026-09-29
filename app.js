@@ -23,7 +23,7 @@ import {
   removeCourseAlias,
 } from './archive-sync.js';
 import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
-import { startCakeModeration } from './cake-moderation.js';
+import { announceCake, startCakeModeration } from './cake-moderation.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +41,10 @@ function selectedCategoryId(options) {
 
 function selectedCourseName(options) {
   return options?.find((option) => option.name === 'fach')?.value;
+}
+
+function selectedUsername(options) {
+  return options?.find((option) => option.name === 'username')?.value;
 }
 
 function focusedOption(data) {
@@ -232,6 +236,14 @@ function formatPreview(result) {
 
 async function executeCommand(data) {
   switch (data.name) {
+    case 'cake': {
+      await announceCake(selectedUsername(data.options));
+      return responseEmbed(
+        'Kuchenmeldung erstellt',
+        'Die Meldung wurde in **Information / kuchen** veröffentlicht.',
+        COLORS.success,
+      );
+    }
     case 'archive': {
       const result = await archiveCategory(selectedCategoryId(data.options));
       const presentation = presentSingleArchive(result);

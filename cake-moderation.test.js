@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import {
+  announceCake,
   canDeleteCakeAnnouncement,
   containsCakeWord,
   handleCakeMessage,
   handleCakeReaction,
+  postCakeAnnouncement,
 } from './cake-moderation.js';
 
 function cakeChannel(send) {
@@ -44,6 +46,27 @@ test('posts a persistent cake quote and reacts with a cross', async () => {
   assert.equal(sent[0].embeds[0].description, '> Ich bringe \\*\\*Kuchen\\*\\* mit.');
   assert.deepEqual(sent[0].allowedMentions, { users: ['author'] });
   assert.deepEqual(reactions, ['❌']);
+});
+
+test('rejects an invalid user for manual cake announcements', async () => {
+  await assert.rejects(announceCake('invalid'), /valid Discord user/);
+});
+
+test('posts a manual cake announcement for a selected user', async () => {
+  const sent = [];
+  const target = cakeChannel(async (payload) => {
+    sent.push(payload);
+    return { react: async () => undefined };
+  });
+
+  await postCakeAnnouncement({ channels: { cache: [target] } }, 'selected-user');
+
+  assert.equal(sent[0].content, '<@selected-user> bringt kuchen mit! 🎉');
+  assert.equal(
+    sent[0].embeds[0].description,
+    'Manuell von einem Administrator eingetragen.',
+  );
+  assert.deepEqual(sent[0].allowedMentions, { users: ['selected-user'] });
 });
 
 test('requires a different administrator to delete a cake announcement', async () => {

@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  archiveCategoryAction,
   buildArchivePlan,
   getExpectedCategories,
   getMissingCategoryNames,
   normalizeName,
   orderCreatedCategories,
   planCourseSetup,
+  presentArchiveAll,
+  presentSingleArchive,
   readOnlyOverwrite,
 } from './archive-sync.js';
 
@@ -142,6 +145,33 @@ test('plans only inactive, non-exempt, non-archived categories', () => {
       children: [channels[4], channels[5]],
     },
   ]);
+});
+
+test('distinguishes a finished archive from a failed or unfinished one', () => {
+  const prefixed = { id: '1', name: 'archived-Altes Fach' };
+  assert.equal(archiveCategoryAction(prefixed, new Set(['1'])), 'already');
+  assert.equal(archiveCategoryAction(prefixed, new Set()), 'run');
+  assert.equal(
+    archiveCategoryAction({ id: '2', name: 'Altes Fach' }, new Set()),
+    'run',
+  );
+
+  assert.equal(
+    presentSingleArchive({ outcome: 'failed', name: 'Altes Fach' }).title,
+    'Archivierung fehlgeschlagen',
+  );
+  assert.equal(
+    presentSingleArchive({ outcome: 'already', name: 'Altes Fach' }).title,
+    'Bereits archiviert',
+  );
+  assert.equal(
+    presentArchiveAll({ categories: [], warnings: [{ channelName: 'general' }] }).description,
+    'Keine Kategorie konnte archiviert werden.',
+  );
+  assert.equal(
+    presentArchiveAll({ categories: [], warnings: [] }).description,
+    'Keine alten Fachkategorien gefunden.',
+  );
 });
 
 test('retries prefixed categories that were not recorded as completed', () => {

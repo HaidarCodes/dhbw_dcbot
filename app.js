@@ -222,6 +222,10 @@ function formatPreview(result) {
         value: formatList(archivedNames),
       },
       { name: 'Fachzuordnungen', value: formatList(aliasNames) },
+      {
+        name: 'Wieder öffnen',
+        value: formatList(result.restoredCategories ?? []),
+      },
     ],
   );
 }
@@ -287,6 +291,7 @@ async function executeCommand(data) {
         }));
       }
       const lines = [
+        ...(result.restored ?? []).map((name) => `- **${name}** wurde wieder geöffnet`),
         ...result.categories.map((name) => `- **${name}** mit \`general\` und \`bilder\``),
         ...(result.repaired ?? []).map(
           (item) => `- **${item.name}**: ${item.channels.map((name) => `\`${name}\``).join(', ')} ergänzt`,
@@ -298,19 +303,29 @@ async function executeCommand(data) {
           (item) => `- **${item.name}** konnte nicht fertiggestellt werden`,
         ),
       ];
-      const trouble = (result.tooLong?.length ?? 0) + (result.failures?.length ?? 0) > 0;
-      const changed = result.categories.length > 0 || (result.repaired?.length ?? 0) > 0;
+      const trouble = (
+        (result.tooLong?.length ?? 0) +
+        (result.failures?.length ?? 0) +
+        (result.warnings?.length ?? 0)
+      ) > 0;
+      const changed = (
+        result.categories.length > 0 ||
+        (result.repaired?.length ?? 0) > 0 ||
+        (result.restored?.length ?? 0) > 0
+      );
       return responseEmbed(
         'Fachkategorien erstellt',
         lines.length > 0
           ? lines.join('\n')
           : 'Alle erwarteten Fachkategorien existieren bereits.',
         trouble ? COLORS.warning : changed ? COLORS.success : COLORS.info,
+        formatArchiveWarnings(result.warnings ?? []),
       );
     }
     case 'createcoursespreview': {
       const result = await previewMissingCourseCategories();
       const lines = [
+        ...(result.restored ?? []).map((name) => `- **${name}** würde wieder geöffnet`),
         ...result.categories.map((name) => `- **${name}**\n  └ \`general\`, \`bilder\``),
         ...(result.repairs ?? []).map(
           (item) => `- **${item.name}**: ${item.missing.map((name) => `\`${name}\``).join(', ')} fehlt`,

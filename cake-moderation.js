@@ -11,10 +11,25 @@ import {
 const CAKE_REACTION = '❌';
 const CAKE_MARKER = 'DHBW Kuchenmeldung';
 const CAKE_WORD = /\bkuchen\b/iu;
+const UNCERTAIN_CAKE = /[?]|\b(?:vielleicht|eventuell|könnte|würde|soll|kann)\b/iu;
+const NEGATED_CAKE = /\b(?:kein(?:e|en|em|er|es)?\s+kuchen|nicht)\b/iu;
+const INCIDENTAL_CAKE = /\b(?:zum|zu dem|für den|für einen)\s+kuchen\b/iu;
+const CAKE_COMMITMENTS = [
+  /\bich\b[^.!?\n]{0,80}\b(?:bring(?:e)?|mitbring(?:e|en)?|nehm(?:e)?|hole|backe|besorge)\b/iu,
+  /\b(?:bring(?:e)?|nehm(?:e)?|hole|backe|besorge)\b[^.!?\n]{0,80}\bich\b/iu,
+  /\bbring(?:e)?\b[^.!?\n]{0,80}\bkuchen\b[^.!?\n]{0,20}\bmit\b/iu,
+  /\bich\b[^.!?\n]{0,80}\bkuchen\b[^.!?\n]{0,30}\b(?:dabei|mit)\b/iu,
+];
 let cakeClient;
 
-export function containsCakeWord(content) {
-  return CAKE_WORD.test(content);
+export function containsCakeCommitment(content) {
+  return (
+    CAKE_WORD.test(content) &&
+    !UNCERTAIN_CAKE.test(content) &&
+    !NEGATED_CAKE.test(content) &&
+    !INCIDENTAL_CAKE.test(content) &&
+    CAKE_COMMITMENTS.some((pattern) => pattern.test(content))
+  );
 }
 
 export function isCakeChannel(channel) {
@@ -73,7 +88,7 @@ export async function handleCakeMessage(message, guildId) {
   if (
     message.author.bot ||
     message.guild?.id !== guildId ||
-    !containsCakeWord(message.content)
+    !containsCakeCommitment(message.content)
   ) {
     return false;
   }
@@ -141,10 +156,17 @@ export function createCakeClient() {
   return client;
 }
 
-export async function announceCake(userId) {
-  if (!/^\d{17,20}$/.test(userId)) {
-    throw new Error('A valid Discord user is required');
+export function cakeAnnouncementUserIds(messages, clientUserId) {
+  const userIds = new Set();
+  for (const message of messages.values()) {
+    if (message.author?.id !== clientUserId || !isCakeAnnouncement(message)) continue;
+    const user = message.mentions.users.first();
+    if (user) userIds.add(user.id);
   }
+  return [...userIds];
+}
+
+async function getCakeGuild() {
   if (!cakeClient?.isReady()) {
     throw new Error('Cake moderation gateway is not ready');
   }
@@ -153,7 +175,24 @@ export async function announceCake(userId) {
     throw new Error('Configured Discord guild was not found');
   }
   await guild.channels.fetch();
-  await postCakeAnnouncement(guild, userId);
+  return guild;
+}
+
+export async function announceCake(userId) {
+  if (!/^\d{17,20}$/.test(userId)) {
+    throw new Error('A valid Discord user is required');
+  }
+  await postCakeAnnouncement(await getCakeGuild(), userId);
+}
+
+export async function listCakeUsers() {
+  const guild = await getCakeGuild();
+  const channel = findCakeChannel(guild);
+  if (!channel) {
+    throw new Error('Discord channel Information/kuchen was not found');
+  }
+  const messages = await channel.messages.fetch({ limit: 100 });
+  return cakeAnnouncementUserIds(messages, cakeClient.user.id);
 }
 
 export async function startCakeModeration() {

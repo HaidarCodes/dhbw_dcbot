@@ -8,7 +8,8 @@ Befehle sind auf Administratoren beschränkt.
 
 | Befehl | Funktion |
 | --- | --- |
-| `/cake username` | Meldet manuell, wer Kuchen mitbringt |
+| `/cake add username` | Meldet manuell, wer Kuchen mitbringt |
+| `/cake list` | Zeigt alle aktuellen Kuchenmeldungen |
 | `/createcoursespreview` | Zeigt fehlende Fachkategorien |
 | `/createcourses` | Erstellt fehlende Kategorien mit `general` und `bilder` |
 | `/archivepreview` | Zeigt geplante Archivierungen |
@@ -51,11 +52,12 @@ Der Bot berücksichtigt nur zukünftige Einträge mit `entityType: "LECTURE"`. `
 Ausnahmen, Aliase und archivierte Kategorien speichert der Bot in
 `data/archive-state.json`. Die Datei wird automatisch erstellt und nicht von Git erfasst.
 
-Enthält eine Nachricht das eigenständige Wort `kuchen`, kopiert der Bot den Text nach
-`Information/kuchen` und schreibt, wer Kuchen mitbringt. Die Kopie bleibt erhalten, wenn die
-ursprüngliche Nachricht gelöscht wird. Administratoren können dieselbe Meldung mit
-`/cake username` manuell erstellen. Der Bot versieht jede Kuchenmeldung mit ❌. Ein Administrator,
-der nicht selbst als Kuchenbringer eingetragen ist, kann sie damit löschen.
+Enthält eine Nachricht eine eindeutige Zusage wie `Ich bringe Kuchen mit`, kopiert der Bot den
+Text nach `Information/kuchen` und schreibt, wer Kuchen mitbringt. Fragen, Verneinungen und bloße
+Erwähnungen des Wortes lösen keine Meldung aus. Die Kopie bleibt erhalten, wenn die ursprüngliche
+Nachricht gelöscht wird. Administratoren können Meldungen mit `/cake add username` manuell
+erstellen und mit `/cake list` anzeigen. Der Bot versieht jede Kuchenmeldung mit ❌. Ein
+Administrator, der nicht selbst als Kuchenbringer eingetragen ist, kann sie damit löschen.
 
 Ein Alias wie `Software Engineering → Informatik 2` verhindert, dass `/createcourses` eine
 zweite Kategorie erstellt oder `/archiveall` die zugeordnete Kategorie archiviert, solange

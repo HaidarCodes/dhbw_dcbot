@@ -1,15 +1,17 @@
 # DHBW Discord Bot
 
 Der Bot gleicht Discord-Fachkategorien mit den zukünftigen Vorlesungen einer konfigurierten
-Stundenplan-API ab. Er erstellt fehlende Kategorien und archiviert alte Kategorien. Alle
-Befehle sind auf Administratoren beschränkt.
+Stundenplan-API ab. Er erstellt fehlende Kategorien und archiviert alte Kategorien. Die
+Verwaltungsbefehle sind auf Administratoren beschränkt; `/kuchen` ist für alle Mitglieder offen.
 
 ## Befehle
 
 | Befehl | Funktion |
 | --- | --- |
+| `/kuchen` | Trägt den ausführenden Nutzer als Kuchenbringer ein |
 | `/cake add username` | Meldet manuell, wer Kuchen mitbringt |
-| `/cake list` | Zeigt alle aktuellen Kuchenmeldungen |
+| `/cake done username [amount]` | Erledigt die ältesten 1–25 oder alle (`all`) Kuchenmeldungen |
+| `/cake list` | Zeigt alle aktuellen Kuchenmeldungen mit Anzahl |
 | `/createcoursespreview` | Zeigt fehlende Fachkategorien |
 | `/createcourses` | Erstellt fehlende Kategorien mit `general` und `bilder` |
 | `/archivepreview` | Zeigt geplante Archivierungen |
@@ -55,9 +57,12 @@ Ausnahmen, Aliase und archivierte Kategorien speichert der Bot in
 Enthält eine Nachricht eine eindeutige Zusage wie `Ich bringe Kuchen mit`, kopiert der Bot den
 Text nach `Information/kuchen` und schreibt, wer Kuchen mitbringt. Fragen, Verneinungen und bloße
 Erwähnungen des Wortes lösen keine Meldung aus. Die Kopie bleibt erhalten, wenn die ursprüngliche
-Nachricht gelöscht wird. Administratoren können Meldungen mit `/cake add username` manuell
-erstellen und mit `/cake list` anzeigen. Der Bot versieht jede Kuchenmeldung mit ❌. Ein
-Administrator, der nicht selbst als Kuchenbringer eingetragen ist, kann sie damit löschen.
+Nachricht gelöscht wird. Jedes Mitglied kann sich mit `/kuchen` selbst eintragen; pro Nutzer sind
+höchstens 25 offene Meldungen und ein neuer Self-Service-Eintrag alle zehn Sekunden erlaubt.
+Administratoren können Meldungen mit `/cake add username` ergänzen, mit `/cake list` samt Anzahl
+anzeigen und mit `/cake done username [amount]` abbauen. Ohne `amount` wird die älteste Meldung
+erledigt, `all` entfernt alle. Der Bot versieht jede Kuchenmeldung mit ❌. Ein Administrator, der
+nicht selbst als Kuchenbringer eingetragen ist, kann damit weiterhin genau eine Meldung löschen.
 
 Ein Alias wie `Software Engineering → Informatik 2` verhindert, dass `/createcourses` eine
 zweite Kategorie erstellt oder `/archiveall` die zugeordnete Kategorie archiviert, solange

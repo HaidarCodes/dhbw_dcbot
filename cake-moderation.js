@@ -12,6 +12,8 @@ import { truncateText } from './utils.js';
 const CAKE_REACTION = '❌';
 const CAKE_MARKER = 'DHBW Kuchenmeldung';
 const CAKE_QUOTE_LIMIT = 4096;
+const MAX_ACTIVE_CAKES = 25;
+const SELF_CAKE_COOLDOWN_MS = 10_000;
 const CAKE_WORD = /\bkuchen\b/iu;
 const UNCERTAIN_CAKE = /[?]|\b(?:vielleicht|eventuell|könnte|würde|soll|kann)\b/iu;
 const NEGATED_CAKE = /\b(?:kein(?:e|en|em|er|es)?\s+kuchen|nicht)\b/iu;
@@ -23,6 +25,15 @@ const CAKE_COMMITMENTS = [
   /\bich\b[^.!?\n]{0,80}\bkuchen\b[^.!?\n]{0,30}\b(?:dabei|mit)\b/iu,
 ];
 let cakeClient;
+let cakeMutationQueue = Promise.resolve();
+const selfCakeCooldowns = new Map();
+
+export class CakeInputError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'CakeInputError';
+  }
+}
 
 export function containsCakeCommitment(content) {
   return (
@@ -49,7 +60,7 @@ export function findCakeChannel(guild) {
 export function isCakeAnnouncement(message) {
   return (
     isCakeChannel(message.channel) &&
-    message.embeds.some((embed) => embed.footer?.text === CAKE_MARKER)
+    message.embeds?.some((embed) => embed.footer?.text === CAKE_MARKER)
   );
 }
 
@@ -65,29 +76,231 @@ function quoteMessage(content) {
   return truncateText(quoted, CAKE_QUOTE_LIMIT);
 }
 
-export async function postCakeAnnouncement(guild, userId, sourceContent) {
+function compareSnowflakes(left, right) {
+  try {
+    const leftId = BigInt(left);
+    const rightId = BigInt(right);
+    return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+  } catch {
+    return String(left).localeCompare(String(right));
+  }
+}
+
+function compareAnnouncementAge(left, right) {
+  const timestampDifference = (left.createdTimestamp ?? 0) - (right.createdTimestamp ?? 0);
+  return timestampDifference || compareSnowflakes(left.id, right.id);
+}
+
+function announcementUserId(message) {
+  return message.mentions?.users?.first()?.id;
+}
+
+function collectionValues(collection) {
+  return [...collection.values()];
+}
+
+export function groupCakeAnnouncements(messages, clientUserId) {
+  const grouped = new Map();
+  for (const message of collectionValues(messages)) {
+    if (message.author?.id !== clientUserId || !isCakeAnnouncement(message)) continue;
+    const userId = announcementUserId(message);
+    if (!userId) continue;
+    const announcements = grouped.get(userId) ?? [];
+    announcements.push(message);
+    grouped.set(userId, announcements);
+  }
+  for (const announcements of grouped.values()) {
+    announcements.sort(compareAnnouncementAge);
+  }
+  return grouped;
+}
+
+export function cakeAnnouncementCounts(messages, clientUserId) {
+  return [...groupCakeAnnouncements(messages, clientUserId)]
+    .map(([userId, announcements]) => ({ userId, count: announcements.length }))
+    .sort((left, right) => right.count - left.count || left.userId.localeCompare(right.userId));
+}
+
+export function parseCakeAmount(value) {
+  if (value === undefined || value === null || value === '') {
+    return { mode: 'count', amount: 1 };
+  }
+  const normalized = String(value).trim().toLocaleLowerCase('de-DE');
+  if (normalized === 'all') {
+    return { mode: 'all' };
+  }
+  if (!/^(?:[1-9]|1\d|2[0-5])$/.test(normalized)) {
+    throw new CakeInputError('Nutze für amount eine Zahl von 1 bis 25 oder all.');
+  }
+  return { mode: 'count', amount: Number(normalized) };
+}
+
+function oldestMessageId(messages) {
+  return collectionValues(messages)
+    .map((message) => message.id)
+    .sort(compareSnowflakes)[0];
+}
+
+export async function fetchCakeAnnouncements(channel, clientUserId) {
+  const announcements = [];
+  let before;
+  while (true) {
+    const page = await channel.messages.fetch({
+      limit: 100,
+      ...(before ? { before } : {}),
+    });
+    for (const message of collectionValues(page)) {
+      if (message.author?.id === clientUserId && isCakeAnnouncement(message)) {
+        announcements.push(message);
+      }
+    }
+    if (page.size < 100) break;
+    const nextBefore = oldestMessageId(page);
+    if (!nextBefore || nextBefore === before) break;
+    before = nextBefore;
+  }
+  return announcements;
+}
+
+async function sendCakeAnnouncement(channel, userId, sourceContent, entryType) {
+  const title = sourceContent
+    ? 'Ursprüngliche Nachricht'
+    : entryType === 'self'
+      ? 'Selbsteintrag'
+      : 'Manueller Eintrag';
+  const description = sourceContent
+    ? quoteMessage(sourceContent)
+    : entryType === 'self'
+      ? 'Von der Person selbst eingetragen.'
+      : 'Manuell von einem Administrator eingetragen.';
+  const announcement = await channel.send({
+    content: `<@${userId}> bringt kuchen mit! 🎉`,
+    embeds: [
+      {
+        title,
+        description,
+        footer: { text: CAKE_MARKER },
+      },
+    ],
+    allowedMentions: { users: [userId] },
+  });
+  try {
+    await announcement.react(CAKE_REACTION);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'cake_reaction_failed',
+      messageId: announcement.id,
+      message: error.message,
+    }));
+  }
+  return announcement;
+}
+
+export async function postCakeAnnouncement(
+  guild,
+  userId,
+  { sourceContent, entryType = 'manual' } = {},
+) {
   const channel = findCakeChannel(guild);
   if (!channel) {
     throw new Error('Discord channel Information/kuchen was not found');
   }
-
-  const embed = {
-    title: sourceContent ? 'Ursprüngliche Nachricht' : 'Manueller Eintrag',
-    description: sourceContent
-      ? quoteMessage(sourceContent)
-      : 'Manuell von einem Administrator eingetragen.',
-    footer: { text: CAKE_MARKER },
-  };
-  const announcement = await channel.send({
-    content: `<@${userId}> bringt kuchen mit! 🎉`,
-    embeds: [embed],
-    allowedMentions: { users: [userId] },
-  });
-  await announcement.react(CAKE_REACTION);
-  return announcement;
+  return sendCakeAnnouncement(channel, userId, sourceContent, entryType);
 }
 
-export async function handleCakeMessage(message, guildId) {
+function withCakeMutation(mutator) {
+  const mutation = cakeMutationQueue.then(mutator);
+  cakeMutationQueue = mutation.catch(() => {});
+  return mutation;
+}
+
+function cleanupCooldowns(now) {
+  for (const [userId, nextAllowedAt] of selfCakeCooldowns) {
+    if (nextAllowedAt <= now) selfCakeCooldowns.delete(userId);
+  }
+}
+
+export async function addCakeAnnouncement(
+  guild,
+  clientUserId,
+  userId,
+  {
+    sourceContent,
+    entryType = 'manual',
+    cooldownMs = 0,
+    now,
+  } = {},
+) {
+  return withCakeMutation(async () => {
+    const currentTime = now ?? Date.now();
+    cleanupCooldowns(currentTime);
+    const nextAllowedAt = selfCakeCooldowns.get(userId) ?? 0;
+    if (cooldownMs > 0 && nextAllowedAt > currentTime) {
+      return {
+        status: 'cooldown',
+        count: 0,
+        retryAfterMs: nextAllowedAt - currentTime,
+      };
+    }
+
+    const channel = findCakeChannel(guild);
+    if (!channel) {
+      throw new Error('Discord channel Information/kuchen was not found');
+    }
+    const announcements = await fetchCakeAnnouncements(channel, clientUserId);
+    const currentCount = groupCakeAnnouncements(announcements, clientUserId)
+      .get(userId)?.length ?? 0;
+    if (currentCount >= MAX_ACTIVE_CAKES) {
+      return { status: 'limit', count: currentCount };
+    }
+
+    await sendCakeAnnouncement(channel, userId, sourceContent, entryType);
+    if (cooldownMs > 0) {
+      selfCakeCooldowns.set(userId, currentTime + cooldownMs);
+    }
+    return { status: 'added', count: currentCount + 1 };
+  });
+}
+
+export async function completeCakeAnnouncements(
+  guild,
+  clientUserId,
+  userId,
+  amountValue,
+) {
+  const amount = parseCakeAmount(amountValue);
+  return withCakeMutation(async () => {
+    const channel = findCakeChannel(guild);
+    if (!channel) {
+      throw new Error('Discord channel Information/kuchen was not found');
+    }
+    const announcements = await fetchCakeAnnouncements(channel, clientUserId);
+    const userAnnouncements = groupCakeAnnouncements(announcements, clientUserId)
+      .get(userId) ?? [];
+    const targets = amount.mode === 'all'
+      ? userAnnouncements
+      : userAnnouncements.slice(0, amount.amount);
+    let removed = 0;
+    const failed = [];
+    for (const message of targets) {
+      try {
+        await message.delete();
+        removed += 1;
+      } catch (error) {
+        failed.push({ messageId: message.id, error });
+      }
+    }
+    return {
+      requested: amount.mode === 'all' ? 'all' : amount.amount,
+      availableBefore: userAnnouncements.length,
+      removed,
+      failed,
+      remaining: userAnnouncements.length - removed,
+    };
+  });
+}
+
+export async function handleCakeMessage(message, guildId, clientUserId) {
   if (
     message.author.bot ||
     message.guild?.id !== guildId ||
@@ -96,8 +309,20 @@ export async function handleCakeMessage(message, guildId) {
     return false;
   }
 
-  await postCakeAnnouncement(message.guild, message.author.id, message.content);
-  return true;
+  const result = await addCakeAnnouncement(
+    message.guild,
+    clientUserId,
+    message.author.id,
+    { sourceContent: message.content, entryType: 'automatic' },
+  );
+  if (result.status === 'limit') {
+    console.warn(JSON.stringify({
+      event: 'cake_limit_reached',
+      userId: message.author.id,
+      count: result.count,
+    }));
+  }
+  return result.status === 'added';
 }
 
 export async function handleCakeReaction(reaction, user, clientUserId) {
@@ -131,7 +356,7 @@ export async function handleCakeReaction(reaction, user, clientUserId) {
     return false;
   }
 
-  await message.delete();
+  await withCakeMutation(() => message.delete());
   return true;
 }
 
@@ -147,7 +372,11 @@ export function createCakeClient() {
   });
 
   client.on(Events.MessageCreate, (message) => {
-    handleCakeMessage(message, process.env.DISCORD_GUILD_ID).catch((error) => {
+    handleCakeMessage(
+      message,
+      process.env.DISCORD_GUILD_ID,
+      client.user.id,
+    ).catch((error) => {
       console.error('Cake message handling failed', error);
     });
   });
@@ -157,16 +386,6 @@ export function createCakeClient() {
     });
   });
   return client;
-}
-
-export function cakeAnnouncementUserIds(messages, clientUserId) {
-  const userIds = new Set();
-  for (const message of messages.values()) {
-    if (message.author?.id !== clientUserId || !isCakeAnnouncement(message)) continue;
-    const user = message.mentions.users.first();
-    if (user) userIds.add(user.id);
-  }
-  return [...userIds];
 }
 
 async function getCakeGuild() {
@@ -181,11 +400,42 @@ async function getCakeGuild() {
   return guild;
 }
 
-export async function announceCake(userId) {
+function requireDiscordUserId(userId) {
   if (!/^\d{17,20}$/.test(userId)) {
     throw new Error('A valid Discord user is required');
   }
-  await postCakeAnnouncement(await getCakeGuild(), userId);
+}
+
+export async function announceCake(userId) {
+  requireDiscordUserId(userId);
+  const guild = await getCakeGuild();
+  return addCakeAnnouncement(guild, cakeClient.user.id, userId);
+}
+
+export async function announceOwnCake(userId, now) {
+  requireDiscordUserId(userId);
+  const guild = await getCakeGuild();
+  return addCakeAnnouncement(
+    guild,
+    cakeClient.user.id,
+    userId,
+    {
+      entryType: 'self',
+      cooldownMs: SELF_CAKE_COOLDOWN_MS,
+      now,
+    },
+  );
+}
+
+export async function completeCake(userId, amount) {
+  requireDiscordUserId(userId);
+  const guild = await getCakeGuild();
+  return completeCakeAnnouncements(
+    guild,
+    cakeClient.user.id,
+    userId,
+    amount,
+  );
 }
 
 export async function listCakeUsers() {
@@ -194,8 +444,8 @@ export async function listCakeUsers() {
   if (!channel) {
     throw new Error('Discord channel Information/kuchen was not found');
   }
-  const messages = await channel.messages.fetch({ limit: 100 });
-  return cakeAnnouncementUserIds(messages, cakeClient.user.id);
+  const announcements = await fetchCakeAnnouncements(channel, cakeClient.user.id);
+  return cakeAnnouncementCounts(announcements, cakeClient.user.id);
 }
 
 export async function startCakeModeration() {

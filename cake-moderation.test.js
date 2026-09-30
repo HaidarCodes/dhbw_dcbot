@@ -2,22 +2,80 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import {
+  addCakeAnnouncement,
   announceCake,
-  cakeAnnouncementUserIds,
+  cakeAnnouncementCounts,
   canDeleteCakeAnnouncement,
+  completeCakeAnnouncements,
   containsCakeCommitment,
+  fetchCakeAnnouncements,
+  groupCakeAnnouncements,
   handleCakeMessage,
   handleCakeReaction,
+  parseCakeAmount,
   postCakeAnnouncement,
 } from './cake-moderation.js';
 
-function cakeChannel(send) {
+function cakeChannel({ send, fetch } = {}) {
   return {
     type: ChannelType.GuildText,
     name: 'kuchen',
     parent: { name: 'Information' },
-    send,
+    send: send ?? (async () => ({ react: async () => undefined })),
+    messages: {
+      fetch: fetch ?? (async () => new Map()),
+    },
   };
+}
+
+function guildWith(channel) {
+  return { channels: { cache: [channel] } };
+}
+
+function cakeMessage(channel, {
+  id,
+  userId,
+  authorId = 'bot',
+  createdTimestamp = Number(id),
+  marker = 'DHBW Kuchenmeldung',
+  onDelete,
+} = {}) {
+  return {
+    id: String(id),
+    createdTimestamp,
+    author: { id: authorId },
+    channel,
+    embeds: [{ footer: { text: marker } }],
+    mentions: { users: { first: () => userId ? { id: userId } : undefined } },
+    delete: onDelete ?? (async () => undefined),
+  };
+}
+
+function dynamicCakeChannel(initialMessages = []) {
+  const messages = new Map(initialMessages.map((message) => [message.id, message]));
+  let nextId = 10_000n;
+  const channel = cakeChannel({
+    fetch: async () => new Map(messages),
+    send: async (payload) => {
+      const id = String(nextId);
+      nextId += 1n;
+      const userId = payload.allowedMentions.users[0];
+      const message = cakeMessage(channel, {
+        id,
+        userId,
+        createdTimestamp: Number(nextId),
+        onDelete: async () => {
+          messages.delete(id);
+        },
+      });
+      message.embeds = payload.embeds;
+      message.react = async () => undefined;
+      messages.set(id, message);
+      return message;
+    },
+  });
+  for (const message of messages.values()) message.channel = channel;
+  return { channel, messages };
 }
 
 test('matches clear cake commitments and rejects ambiguous mentions', () => {
@@ -48,83 +106,264 @@ test('matches clear cake commitments and rejects ambiguous mentions', () => {
   }
 });
 
-test('posts a persistent cake quote and reacts with a cross', async () => {
-  const reactions = [];
+test('posts automatic, manual, and self-service cake announcements', async () => {
   const sent = [];
-  const target = cakeChannel(async (payload) => {
-    sent.push(payload);
-    return { react: async (emoji) => reactions.push(emoji) };
-  });
-  const message = {
-    author: { id: 'author', bot: false },
-    content: 'Ich bringe **Kuchen** mit.',
-    guild: {
-      id: 'guild',
-      channels: { cache: [target] },
+  const reactions = [];
+  const channel = cakeChannel({
+    send: async (payload) => {
+      sent.push(payload);
+      return { react: async (emoji) => reactions.push(emoji) };
     },
-  };
+  });
+  const guild = guildWith(channel);
 
-  assert.equal(await handleCakeMessage(message, 'guild'), true);
-  assert.equal(sent[0].content, '<@author> bringt kuchen mit! 🎉');
+  await postCakeAnnouncement(guild, 'automatic-user', {
+    sourceContent: 'Ich bringe **Kuchen** mit.',
+    entryType: 'automatic',
+  });
+  await postCakeAnnouncement(guild, 'manual-user');
+  await postCakeAnnouncement(guild, 'self-user', { entryType: 'self' });
+
   assert.equal(sent[0].embeds[0].title, 'Ursprüngliche Nachricht');
   assert.equal(sent[0].embeds[0].description, '> Ich bringe \\*\\*Kuchen\\*\\* mit.');
-  assert.deepEqual(sent[0].allowedMentions, { users: ['author'] });
-  assert.deepEqual(reactions, ['❌']);
+  assert.equal(sent[1].embeds[0].title, 'Manueller Eintrag');
+  assert.equal(sent[2].embeds[0].title, 'Selbsteintrag');
+  assert.deepEqual(reactions, ['❌', '❌', '❌']);
 });
 
 test('keeps quoted messages inside the Discord embed description limit', async () => {
   let sent;
-  const target = cakeChannel(async (payload) => {
-    sent = payload;
-    return { react: async () => undefined };
+  const channel = cakeChannel({
+    send: async (payload) => {
+      sent = payload;
+      return { react: async () => undefined };
+    },
   });
   const sourceContent = Array(1000).fill('*').join('\n');
 
-  await postCakeAnnouncement({ channels: { cache: [target] } }, 'author', sourceContent);
+  await postCakeAnnouncement(guildWith(channel), 'author', { sourceContent });
 
   assert.ok(sent.embeds[0].description.length <= 4096);
   assert.match(sent.embeds[0].description, /… gekürzt$/u);
 });
 
-test('rejects an invalid user for manual cake announcements', async () => {
-  await assert.rejects(announceCake('invalid'), /valid Discord user/);
+test('paginates through the complete cake channel history', async () => {
+  const calls = [];
+  const channel = cakeChannel();
+  const firstPage = new Map();
+  for (let id = 101; id >= 2; id -= 1) {
+    const message = cakeMessage(channel, { id, userId: 'user' });
+    firstPage.set(message.id, message);
+  }
+  const finalMessage = cakeMessage(channel, { id: 1, userId: 'user' });
+  channel.messages.fetch = async (options) => {
+    calls.push(options);
+    return options.before ? new Map([['1', finalMessage]]) : firstPage;
+  };
+
+  const announcements = await fetchCakeAnnouncements(channel, 'bot');
+
+  assert.equal(announcements.length, 101);
+  assert.deepEqual(calls, [
+    { limit: 100 },
+    { limit: 100, before: '2' },
+  ]);
 });
 
-test('posts a manual cake announcement for a selected user', async () => {
-  const sent = [];
-  const target = cakeChannel(async (payload) => {
-    sent.push(payload);
-    return { react: async () => undefined };
-  });
+test('groups and sorts cake announcement counts', () => {
+  const channel = cakeChannel();
+  const messages = [
+    cakeMessage(channel, { id: 1, userId: 'user-b' }),
+    cakeMessage(channel, { id: 2, userId: 'user-a' }),
+    cakeMessage(channel, { id: 3, userId: 'user-b' }),
+    cakeMessage(channel, { id: 4, userId: 'user-a' }),
+    cakeMessage(channel, { id: 5, userId: 'user-b' }),
+    cakeMessage(channel, { id: 6, userId: 'ignored', authorId: 'other-bot' }),
+    cakeMessage(channel, { id: 7, userId: 'ignored', marker: 'Andere Meldung' }),
+    cakeMessage(channel, { id: 8, userId: 'user-c' }),
+    cakeMessage(channel, { id: 9, userId: 'user-c' }),
+  ];
 
-  await postCakeAnnouncement({ channels: { cache: [target] } }, 'selected-user');
+  const grouped = groupCakeAnnouncements(messages, 'bot');
+  assert.deepEqual(grouped.get('user-b').map(({ id }) => id), ['1', '3', '5']);
+  assert.deepEqual(cakeAnnouncementCounts(messages, 'bot'), [
+    { userId: 'user-b', count: 3 },
+    { userId: 'user-a', count: 2 },
+    { userId: 'user-c', count: 2 },
+  ]);
+});
 
-  assert.equal(sent[0].content, '<@selected-user> bringt kuchen mit! 🎉');
-  assert.equal(sent[0].embeds[0].title, 'Manueller Eintrag');
-  assert.equal(
-    sent[0].embeds[0].description,
-    'Manuell von einem Administrator eingetragen.',
+test('parses cake completion amounts strictly', () => {
+  assert.deepEqual(parseCakeAmount(), { mode: 'count', amount: 1 });
+  assert.deepEqual(parseCakeAmount('1'), { mode: 'count', amount: 1 });
+  assert.deepEqual(parseCakeAmount('25'), { mode: 'count', amount: 25 });
+  assert.deepEqual(parseCakeAmount(' ALL '), { mode: 'all' });
+  for (const value of ['0', '26', '-1', '1.5', 'foo', ' ']) {
+    assert.throws(() => parseCakeAmount(value), /1 bis 25 oder all/u);
+  }
+});
+
+test('completes the oldest cake announcements first', async () => {
+  const deleted = [];
+  const channel = cakeChannel();
+  const messages = [
+    cakeMessage(channel, {
+      id: 30,
+      userId: 'user',
+      createdTimestamp: 300,
+      onDelete: async () => deleted.push('30'),
+    }),
+    cakeMessage(channel, {
+      id: 10,
+      userId: 'user',
+      createdTimestamp: 100,
+      onDelete: async () => deleted.push('10'),
+    }),
+    cakeMessage(channel, {
+      id: 20,
+      userId: 'user',
+      createdTimestamp: 200,
+      onDelete: async () => deleted.push('20'),
+    }),
+  ];
+  channel.messages.fetch = async () => new Map(messages.map((message) => [message.id, message]));
+
+  const result = await completeCakeAnnouncements(
+    guildWith(channel),
+    'bot',
+    'user',
+    '2',
   );
-  assert.deepEqual(sent[0].allowedMentions, { users: ['selected-user'] });
+
+  assert.deepEqual(deleted, ['10', '20']);
+  assert.deepEqual(result, {
+    requested: 2,
+    availableBefore: 3,
+    removed: 2,
+    failed: [],
+    remaining: 1,
+  });
 });
 
-test('lists unique users from active cake announcements', () => {
-  const channel = cakeChannel(async () => undefined);
-  const announcement = (authorId, userId, marker = 'DHBW Kuchenmeldung') => ({
-    author: { id: authorId },
-    channel,
-    embeds: [{ footer: { text: marker } }],
-    mentions: { users: { first: () => ({ id: userId }) } },
-  });
-  const messages = new Map([
-    ['1', announcement('bot', 'user-1')],
-    ['2', announcement('bot', 'user-1')],
-    ['3', announcement('bot', 'user-2')],
-    ['4', announcement('other-bot', 'user-3')],
-    ['5', announcement('bot', 'user-4', 'Andere Meldung')],
+test('completes all available announcements and reports deletion failures', async () => {
+  const channel = cakeChannel();
+  const messages = [
+    cakeMessage(channel, { id: 1, userId: 'user' }),
+    cakeMessage(channel, {
+      id: 2,
+      userId: 'user',
+      onDelete: async () => {
+        throw new Error('missing permission');
+      },
+    }),
+  ];
+  channel.messages.fetch = async () => new Map(messages.map((message) => [message.id, message]));
+
+  const result = await completeCakeAnnouncements(
+    guildWith(channel),
+    'bot',
+    'user',
+    'all',
+  );
+
+  assert.equal(result.requested, 'all');
+  assert.equal(result.removed, 1);
+  assert.equal(result.failed.length, 1);
+  assert.equal(result.failed[0].messageId, '2');
+  assert.equal(result.remaining, 1);
+});
+
+test('enforces the active cake limit under parallel additions', async () => {
+  const holder = dynamicCakeChannel();
+  for (let id = 1; id <= 24; id += 1) {
+    const message = cakeMessage(holder.channel, { id, userId: 'user' });
+    holder.messages.set(message.id, message);
+  }
+
+  const [first, second] = await Promise.all([
+    addCakeAnnouncement(guildWith(holder.channel), 'bot', 'user'),
+    addCakeAnnouncement(guildWith(holder.channel), 'bot', 'user'),
   ]);
 
-  assert.deepEqual(cakeAnnouncementUserIds(messages, 'bot'), ['user-1', 'user-2']);
+  assert.equal(first.status, 'added');
+  assert.equal(first.count, 25);
+  assert.equal(second.status, 'limit');
+  assert.equal(second.count, 25);
+  assert.equal(holder.messages.size, 25);
+});
+
+test('applies the self-service cooldown only after a successful post', async () => {
+  const holder = dynamicCakeChannel();
+  const guild = guildWith(holder.channel);
+
+  const first = await addCakeAnnouncement(guild, 'bot', 'cooldown-user', {
+    entryType: 'self',
+    cooldownMs: 10_000,
+    now: 1_000,
+  });
+  const blocked = await addCakeAnnouncement(guild, 'bot', 'cooldown-user', {
+    entryType: 'self',
+    cooldownMs: 10_000,
+    now: 1_001,
+  });
+  const afterCooldown = await addCakeAnnouncement(guild, 'bot', 'cooldown-user', {
+    entryType: 'self',
+    cooldownMs: 10_000,
+    now: 11_000,
+  });
+
+  assert.deepEqual(first, { status: 'added', count: 1 });
+  assert.equal(blocked.status, 'cooldown');
+  assert.equal(blocked.retryAfterMs, 9_999);
+  assert.deepEqual(afterCooldown, { status: 'added', count: 2 });
+});
+
+test('does not set a cooldown when posting fails', async () => {
+  let shouldFail = true;
+  const channel = cakeChannel({
+    fetch: async () => new Map(),
+    send: async () => {
+      if (shouldFail) throw new Error('Discord unavailable');
+      return { react: async () => undefined };
+    },
+  });
+  const guild = guildWith(channel);
+
+  await assert.rejects(
+    addCakeAnnouncement(guild, 'bot', 'retry-user', {
+      entryType: 'self',
+      cooldownMs: 10_000,
+      now: 1_000,
+    }),
+    /Discord unavailable/u,
+  );
+  shouldFail = false;
+  const retry = await addCakeAnnouncement(guild, 'bot', 'retry-user', {
+    entryType: 'self',
+    cooldownMs: 10_000,
+    now: 1_001,
+  });
+
+  assert.equal(retry.status, 'added');
+});
+
+test('posts a recognized commitment through the shared add flow', async () => {
+  const holder = dynamicCakeChannel();
+  const message = {
+    author: { id: 'author', bot: false },
+    content: 'Ich bringe Kuchen mit.',
+    guild: {
+      id: 'guild',
+      channels: { cache: [holder.channel] },
+    },
+  };
+
+  assert.equal(await handleCakeMessage(message, 'guild', 'bot'), true);
+  assert.equal(holder.messages.size, 1);
+});
+
+test('rejects an invalid user for manual cake announcements', async () => {
+  await assert.rejects(announceCake('invalid'), /valid Discord user/u);
 });
 
 test('requires a different administrator to delete a cake announcement', async () => {
@@ -133,24 +372,23 @@ test('requires a different administrator to delete a cake announcement', async (
   assert.equal(canDeleteCakeAnnouncement(false, 'member', 'author'), false);
 
   let deleted = false;
-  const channel = cakeChannel(async () => undefined);
-  const message = {
-    partial: false,
-    author: { id: 'bot' },
-    channel,
-    embeds: [{ footer: { text: 'DHBW Kuchenmeldung' } }],
-    mentions: { users: { first: () => ({ id: 'author' }) } },
-    guild: {
-      members: {
-        fetch: async () => ({
-          permissions: {
-            has: (permission) => permission === PermissionFlagsBits.Administrator,
-          },
-        }),
-      },
-    },
-    delete: async () => {
+  const channel = cakeChannel();
+  const message = cakeMessage(channel, {
+    id: 1,
+    userId: 'author',
+    authorId: 'bot',
+    onDelete: async () => {
       deleted = true;
+    },
+  });
+  message.partial = false;
+  message.guild = {
+    members: {
+      fetch: async () => ({
+        permissions: {
+          has: (permission) => permission === PermissionFlagsBits.Administrator,
+        },
+      }),
     },
   };
   const reaction = {

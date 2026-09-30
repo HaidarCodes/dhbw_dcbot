@@ -25,6 +25,9 @@ import {
 import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
 import {
   announceCake,
+  announceOwnCake,
+  CakeInputError,
+  completeCake,
   listCakeUsers,
   startCakeModeration,
 } from './cake-moderation.js';
@@ -49,6 +52,14 @@ function selectedCourseName(options) {
 
 function selectedUsername(options) {
   return options?.find((option) => option.name === 'username')?.value;
+}
+
+function selectedAmount(options) {
+  return options?.find((option) => option.name === 'amount')?.value;
+}
+
+function isPublicCommand(commandName) {
+  return commandName === 'kuchen';
 }
 
 function focusedOption(data) {
@@ -238,24 +249,84 @@ function formatPreview(result) {
   );
 }
 
-async function executeCommand(data) {
+async function executeCommand(data, userId) {
   switch (data.name) {
+    case 'kuchen': {
+      const result = await announceOwnCake(userId);
+      if (result.status === 'cooldown') {
+        return responseEmbed(
+          'Bitte kurz warten',
+          `Du kannst dich in ${Math.ceil(result.retryAfterMs / 1000)} Sekunden erneut eintragen.`,
+          COLORS.warning,
+        );
+      }
+      if (result.status === 'limit') {
+        return responseEmbed(
+          'Kuchenlimit erreicht',
+          'Du hast bereits 25 offene Kuchenmeldungen.',
+          COLORS.warning,
+        );
+      }
+      return responseEmbed(
+        'Kuchenmeldung erstellt',
+        `Du bist jetzt **${result.count}×** als Kuchenbringer eingetragen.`,
+        COLORS.success,
+      );
+    }
     case 'cake': {
       const subcommand = data.options?.[0];
       if (subcommand?.name === 'add') {
-        await announceCake(selectedUsername(subcommand.options));
+        const result = await announceCake(selectedUsername(subcommand.options));
         return responseEmbed(
-          'Kuchenmeldung erstellt',
-          'Die Meldung wurde in **Information / kuchen** veröffentlicht.',
-          COLORS.success,
+          result.status === 'limit' ? 'Kuchenlimit erreicht' : 'Kuchenmeldung erstellt',
+          result.status === 'limit'
+            ? 'Die Person hat bereits 25 offene Kuchenmeldungen.'
+            : `Die Person ist jetzt **${result.count}×** eingetragen.`,
+          result.status === 'limit' ? COLORS.warning : COLORS.success,
         );
       }
+      if (subcommand?.name === 'done') {
+        try {
+          const targetUserId = selectedUsername(subcommand.options);
+          const result = await completeCake(
+            targetUserId,
+            selectedAmount(subcommand.options),
+          );
+          if (result.availableBefore === 0) {
+            return responseEmbed(
+              'Keine Kuchenmeldung gefunden',
+              'Für diese Person ist kein Kuchen offen.',
+            );
+          }
+          return responseEmbed(
+            result.failed.length > 0 ? 'Nicht vollständig erledigt' : 'Kuchen erledigt',
+            [
+              `**${result.removed}×** entfernt.`,
+              `**${result.remaining}×** weiterhin offen.`,
+              ...(result.failed.length > 0
+                ? [`**${result.failed.length}×** konnte nicht entfernt werden.`]
+                : []),
+            ].join('\n'),
+            result.failed.length > 0 ? COLORS.warning : COLORS.success,
+          );
+        } catch (error) {
+          if (error instanceof CakeInputError) {
+            return responseEmbed(
+              'Ungültige Anzahl',
+              error.message,
+              COLORS.error,
+            );
+          }
+          throw error;
+        }
+      }
       if (subcommand?.name === 'list') {
-        const userIds = await listCakeUsers();
+        const entries = await listCakeUsers();
         return responseEmbed(
           'Aktuelle Kuchenmeldungen',
-          userIds.length > 0
-            ? userIds.map((userId) => `- <@${userId}>`).join('\n')
+          entries.length > 0
+            ? entries.map(({ userId: entryUserId, count }) =>
+              `- **${count}×** <@${entryUserId}>`).join('\n')
             : 'Niemand ist aktuell eingetragen.',
         );
       }
@@ -508,7 +579,7 @@ app.post(
     if (type !== InteractionType.APPLICATION_COMMAND) {
       return res.status(400).json({ error: 'unknown interaction type' });
     }
-    if (!isAdministrator(member)) {
+    if (!isPublicCommand(data.name) && !isAdministrator(member)) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
@@ -526,10 +597,13 @@ app.post(
 
     res.send({
       type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      ...(isPublicCommand(data.name)
+        ? { data: { flags: InteractionResponseFlags.EPHEMERAL } }
+        : {}),
     });
 
     try {
-      const response = await executeCommand(data);
+      const response = await executeCommand(data, member?.user?.id);
       await DiscordRequest(`webhooks/${applicationId}/${token}/messages/@original`, {
         method: 'PATCH',
         body: response,

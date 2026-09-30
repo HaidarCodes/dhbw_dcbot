@@ -20,13 +20,25 @@ const COMMANDS = [
   {
     ...GUILD_COMMAND,
     name: 'cake',
-    description: 'Trägt ein, wer Kuchen mitbringt',
+    description: 'Verwaltet, wer Kuchen mitbringt',
     options: [
       {
-        type: 6,
-        name: 'username',
-        description: 'Person, die Kuchen mitbringt',
-        required: true,
+        type: 1,
+        name: 'add',
+        description: 'Trägt ein, wer Kuchen mitbringt',
+        options: [
+          {
+            type: 6,
+            name: 'username',
+            description: 'Person, die Kuchen mitbringt',
+            required: true,
+          },
+        ],
+      },
+      {
+        type: 1,
+        name: 'list',
+        description: 'Zeigt alle aktuellen Kuchenmeldungen',
       },
     ],
   },

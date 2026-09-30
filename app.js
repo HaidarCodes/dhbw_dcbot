@@ -23,7 +23,11 @@ import {
   removeCourseAlias,
 } from './archive-sync.js';
 import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
-import { announceCake, startCakeModeration } from './cake-moderation.js';
+import {
+  announceCake,
+  listCakeUsers,
+  startCakeModeration,
+} from './cake-moderation.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -237,12 +241,25 @@ function formatPreview(result) {
 async function executeCommand(data) {
   switch (data.name) {
     case 'cake': {
-      await announceCake(selectedUsername(data.options));
-      return responseEmbed(
-        'Kuchenmeldung erstellt',
-        'Die Meldung wurde in **Information / kuchen** veröffentlicht.',
-        COLORS.success,
-      );
+      const subcommand = data.options?.[0];
+      if (subcommand?.name === 'add') {
+        await announceCake(selectedUsername(subcommand.options));
+        return responseEmbed(
+          'Kuchenmeldung erstellt',
+          'Die Meldung wurde in **Information / kuchen** veröffentlicht.',
+          COLORS.success,
+        );
+      }
+      if (subcommand?.name === 'list') {
+        const userIds = await listCakeUsers();
+        return responseEmbed(
+          'Aktuelle Kuchenmeldungen',
+          userIds.length > 0
+            ? userIds.map((userId) => `- <@${userId}>`).join('\n')
+            : 'Niemand ist aktuell eingetragen.',
+        );
+      }
+      throw new Error('Unknown cake subcommand');
     }
     case 'archive': {
       const result = await archiveCategory(selectedCategoryId(data.options));

@@ -24,6 +24,11 @@ import {
 } from './archive-sync.js';
 import { clampEmbed, DiscordApiError, DiscordRequest } from './utils.js';
 import {
+  canExecuteCommand,
+  isAdministrator,
+  isPublicCommand,
+} from './interaction-policy.js';
+import {
   announceCake,
   announceOwnCake,
   CakeInputError,
@@ -34,7 +39,6 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ADMINISTRATOR_PERMISSION = 8n;
 const COLORS = {
   info: 0x5865f2,
   success: 0x57f287,
@@ -56,10 +60,6 @@ function selectedUsername(options) {
 
 function selectedAmount(options) {
   return options?.find((option) => option.name === 'amount')?.value;
-}
-
-function isPublicCommand(commandName) {
-  return commandName === 'kuchen';
 }
 
 function focusedOption(data) {
@@ -204,13 +204,6 @@ function exceptionSelectResponse() {
       },
     ],
   };
-}
-
-function isAdministrator(member) {
-  return (
-    member?.permissions !== undefined &&
-    (BigInt(member.permissions) & ADMINISTRATOR_PERMISSION) === ADMINISTRATOR_PERMISSION
-  );
 }
 
 function formatPreview(result) {
@@ -579,7 +572,7 @@ app.post(
     if (type !== InteractionType.APPLICATION_COMMAND) {
       return res.status(400).json({ error: 'unknown interaction type' });
     }
-    if (!isPublicCommand(data.name) && !isAdministrator(member)) {
+    if (!canExecuteCommand(data.name, member)) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {

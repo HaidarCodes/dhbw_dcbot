@@ -6,13 +6,14 @@
   "main": "app.js",
   "type": "module",
   "engines": {
-    "node": ">=18.x"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "start": "node app.js",
     "register": "node commands.js",
     "dev": "nodemon app.js",
-    "check": "node --check app.js && node --check archive-sync.js && node --check cake-moderation.js && node --check commands.js && node --check state-store.js && node --check utils.js",
+    "check": "node --check app.js && node --check archive-sync.js && node --check cake-moderation.js && node --check command-definitions.js && node --check commands.js && node --check interaction-policy.js && node --check state-store.js && node --check utils.js",
+    "lint": "eslint .",
     "test": "node --test"
   },
   "license": "MIT",
@@ -23,6 +24,8 @@
     "express": "4.22.3"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
     "nodemon": "^3.0.0"
   }
 }

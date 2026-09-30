@@ -197,13 +197,12 @@ vor `/archiveall` mit `/archiveexception add` schützen.
 
 ```bash
 cd /opt/dhbw-dcbot
-sudo -u dcbot git pull --ff-only
-sudo -u dcbot npm ci --omit=dev
-sudo -u dcbot npm run register
-sudo systemctl restart dhbw-dcbot
+sudo ./update.sh
 ```
 
-`npm run register` ist nur nach Änderungen an den Slash-Commands erforderlich.
+Das Skript aktualisiert den Git-Stand per Fast-Forward, installiert die gesperrten
+Produktionsabhängigkeiten, registriert die Slash-Commands, startet den Dienst neu und zeigt
+anschließend dessen Status. Bei einem Fehler wird das Update sofort abgebrochen.
 
 ## Entwicklung
 

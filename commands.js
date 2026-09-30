@@ -5,6 +5,10 @@ const GUILD_COMMAND = {
   type: 1,
   integration_types: [0],
   contexts: [0],
+};
+
+const ADMIN_GUILD_COMMAND = {
+  ...GUILD_COMMAND,
   default_member_permissions: '8',
 };
 
@@ -19,6 +23,11 @@ const CATEGORY_OPTION = {
 const COMMANDS = [
   {
     ...GUILD_COMMAND,
+    name: 'kuchen',
+    description: 'Trägt dich als Kuchenbringer ein',
+  },
+  {
+    ...ADMIN_GUILD_COMMAND,
     name: 'cake',
     description: 'Verwaltet, wer Kuchen mitbringt',
     options: [
@@ -37,29 +46,48 @@ const COMMANDS = [
       },
       {
         type: 1,
+        name: 'done',
+        description: 'Markiert Kuchenmeldungen als erledigt',
+        options: [
+          {
+            type: 6,
+            name: 'username',
+            description: 'Person, deren Kuchen erledigt ist',
+            required: true,
+          },
+          {
+            type: 3,
+            name: 'amount',
+            description: 'Anzahl von 1 bis 25 oder all',
+            required: false,
+          },
+        ],
+      },
+      {
+        type: 1,
         name: 'list',
         description: 'Zeigt alle aktuellen Kuchenmeldungen',
       },
     ],
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'archive',
     description: 'Archiviert eine Kategorie',
     options: [CATEGORY_OPTION],
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'archiveall',
     description: 'Archiviert alle Fächer ohne zukünftige Vorlesungen',
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'archivepreview',
     description: 'Zeigt die geplante automatische Archivierung',
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'archiveexception',
     description: 'Verwaltet Kategorien, die nie archiviert werden',
     options: [
@@ -82,17 +110,17 @@ const COMMANDS = [
     ],
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'createcourses',
     description: 'Erstellt fehlende Fachkategorien mit general und bilder',
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'createcoursespreview',
     description: 'Zeigt fehlende Fachkategorien ohne sie zu erstellen',
   },
   {
-    ...GUILD_COMMAND,
+    ...ADMIN_GUILD_COMMAND,
     name: 'coursealias',
     description: 'Ordnet Rapla-Fächer anders benannten Kategorien zu',
     options: [

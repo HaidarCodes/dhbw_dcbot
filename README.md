@@ -113,7 +113,7 @@ ARCHIVED_PREFIX=archived-
 ARCHIVE_STATE_FILE=data/archive-state.json
 ```
 
-Node.js 18 oder neuer ist erforderlich.
+Node.js 20.19 oder neuer ist erforderlich.
 
 ### systemd
 
@@ -208,8 +208,10 @@ anschließend dessen Status. Bei einem Fehler wird das Update sofort abgebrochen
 
 ```bash
 npm ci
+npm run lint
 npm run check
 npm test
 ```
 
-GitHub Actions führt Syntaxprüfung und Tests bei Pushes und Pull Requests aus.
+GitHub Actions prüft Pull Requests auf Node.js 20 und 22 mit ESLint, Syntaxprüfung,
+Tests, Dependency-Audit sowie der Syntax und Ausführbarkeit des Update-Skripts.

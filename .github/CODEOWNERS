@@ -1,0 +1,8 @@
+# Security-sensitive build and deployment configuration
+/.github/CODEOWNERS @HaidarCodes
+/.github/workflows/ @HaidarCodes
+/.dockerignore @HaidarCodes
+/Dockerfile @HaidarCodes
+/compose.yaml @HaidarCodes
+/package.json @HaidarCodes
+/package-lock.json @HaidarCodes

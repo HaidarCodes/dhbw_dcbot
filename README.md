@@ -140,6 +140,23 @@ docker compose build --pull --no-cache
 docker compose up -d
 ```
 
+### Automatisches Deployment mit GitHub Actions
+
+Der Workflow `.github/workflows/deploy.yml` startet nach einem erfolgreichen `CI`-Lauf für
+einen Push auf `main`. Er checkt den getesteten Commit aus, baut das Image mit dem aktuellen
+Basis-Image neu, registriert die Discord-Befehle, ersetzt und startet den Container und prüft
+anschließend, ob der Dienst läuft.
+
+Auf dem Produktionsserver muss ein GitHub-Actions-Self-Hosted-Runner mit den Labels
+`self-hosted`, `linux` und `x64` laufen. Er benötigt die Docker Engine, das Compose-Plugin und
+Zugriff auf Docker.
+
+Im GitHub Environment `production` wird das Secret `DEPLOY_ENV` mit dem vollständigen Inhalt
+der `.env`-Datei gemäß `.env.sample` hinterlegt. Die Datei wird nur während des Deployments mit
+restriktiven Berechtigungen angelegt und danach entfernt. Für das Environment empfehlen sich
+Schutzregeln und erforderliche Reviewer. Das benannte Compose-Volume `bot-data` erhält den
+Bot-Zustand beim Austausch des Containers.
+
 ## Installation auf Ubuntu/Debian ohne Container
 
 ```bash

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { URL } from 'node:url';
 
 export class DiscordApiError extends Error {
   constructor({ endpoint, method, status, code, message }) {
@@ -13,6 +14,31 @@ export class DiscordApiError extends Error {
 
 const MAX_RATE_LIMIT_RETRIES = 5;
 const MAX_RATE_LIMIT_DELAY_MS = 10_000;
+
+const DISCORD_API_BASE_URL = new URL('https://discord.com/api/v10/');
+const DISCORD_ENDPOINT_SEGMENT = /^[A-Za-z0-9._@-]+$/;
+
+export function discordApiUrl(endpoint) {
+  if (typeof endpoint !== 'string' || endpoint.length === 0) {
+    throw new TypeError('Discord API endpoint must be a non-empty string');
+  }
+
+  const segments = endpoint.split('/');
+  const isValid = segments.every(
+    (segment) =>
+      segment.length > 0 &&
+      segment !== '.' &&
+      segment !== '..' &&
+      DISCORD_ENDPOINT_SEGMENT.test(segment),
+  );
+  if (!isValid) {
+    throw new TypeError('Discord API endpoint contains an invalid path segment');
+  }
+
+  const url = new URL(DISCORD_API_BASE_URL);
+  url.pathname += segments.map(encodeURIComponent).join('/');
+  return url;
+}
 
 export function rateLimitDelayMs(retryAfterHeader, bodyText) {
   if (retryAfterHeader !== null && retryAfterHeader !== undefined && retryAfterHeader !== '') {
@@ -34,7 +60,7 @@ export function rateLimitDelayMs(retryAfterHeader, bodyText) {
 }
 
 export async function DiscordRequest(endpoint, options = {}, attempt = 0) {
-  const url = 'https://discord.com/api/v10/' + endpoint;
+  const url = discordApiUrl(endpoint);
   const { body, headers, ...rest } = options;
   const res = await fetch(url, {
     ...rest,

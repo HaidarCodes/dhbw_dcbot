@@ -16,3 +16,5 @@ services:
 
 volumes:
   bot-data:
+    external: true
+    name: dhbw-dcbot_bot-data

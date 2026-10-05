@@ -95,6 +95,13 @@ cp .env.sample .env
 nano .env
 ```
 
+Das externe Daten-Volume muss einmalig vorhanden sein. Lege es bei Bedarf an:
+
+```bash
+docker volume inspect dhbw-dcbot_bot-data >/dev/null 2>&1 || \
+  docker volume create dhbw-dcbot_bot-data
+```
+
 Image bauen, Slash-Commands registrieren und den Bot starten:
 
 ```bash
@@ -112,9 +119,11 @@ docker compose logs -f bot
 
 Compose veröffentlicht standardmäßig Port `3000`. Ein anderer Host-Port kann über `PORT` in
 `.env` gesetzt werden; der Container verwendet intern immer Port `3000`. Der Zustand aus
-`data/archive-state.json` liegt im benannten Volume
-`dcbot_bot-data` und bleibt bei `docker compose down` sowie beim Austausch des Containers erhalten.
-Die `.env` wird nur zur Laufzeit eingelesen und nicht in das Image kopiert.
+`data/archive-state.json` liegt im externen Compose-Volume `dhbw-dcbot_bot-data`. Es bleibt beim
+Austausch des Containers oder Stacks erhalten. Beim Umstieg vom laufenden Portainer-Stack musst
+du nur den Stack beziehungsweise Container stoppen und entfernen. Lösche nicht das Volume.
+Starte danach das fehlgeschlagene GitHub-Deployment erneut. Die `.env` wird nur zur Laufzeit
+eingelesen und nicht in das Image kopiert.
 
 ### Container-Build aktualisieren
 
@@ -154,8 +163,8 @@ Zugriff auf Docker.
 Im GitHub Environment `production` wird das Secret `DEPLOY_ENV` mit dem vollständigen Inhalt
 der `.env`-Datei gemäß `.env.sample` hinterlegt. Die Datei wird nur während des Deployments mit
 restriktiven Berechtigungen angelegt und danach entfernt. Für das Environment empfehlen sich
-Schutzregeln und erforderliche Reviewer. Das benannte Compose-Volume `bot-data` erhält den
-Bot-Zustand beim Austausch des Containers.
+Schutzregeln und erforderliche Reviewer. Das externe Compose-Volume `dhbw-dcbot_bot-data`
+erhält den Bot-Zustand beim Austausch des Containers oder Stacks.
 
 ## Installation auf Ubuntu/Debian ohne Container
 

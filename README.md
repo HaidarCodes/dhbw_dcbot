@@ -85,7 +85,62 @@ das Fach in Rapla aktiv ist.
 
 Benötigt werden Application ID, Public Key, Bot-Token und Server-ID.
 
-## Installation auf Ubuntu/Debian
+## Docker Compose (empfohlen)
+
+Vorausgesetzt werden Docker Engine und Docker Compose. Zuerst die Konfiguration anlegen und die
+Platzhalter in `.env` ersetzen:
+
+```bash
+cp .env.sample .env
+nano .env
+```
+
+Image bauen, Slash-Commands registrieren und den Bot starten:
+
+```bash
+docker compose build
+docker compose run --rm bot npm run register
+docker compose up -d
+```
+
+Status und Logs anzeigen:
+
+```bash
+docker compose ps
+docker compose logs -f bot
+```
+
+Compose veröffentlicht standardmäßig Port `3000`. Ein anderer Host-Port kann über `PORT` in
+`.env` gesetzt werden; der Container verwendet intern immer Port `3000`. Der Zustand aus
+`data/archive-state.json` liegt im benannten Volume
+`dcbot_bot-data` und bleibt bei `docker compose down` sowie beim Austausch des Containers erhalten.
+Die `.env` wird nur zur Laufzeit eingelesen und nicht in das Image kopiert.
+
+### Container-Build aktualisieren
+
+Nach Änderungen am Quellcode reicht ein erneuter Build mit anschließendem Container-Austausch:
+
+```bash
+docker compose up -d --build
+```
+
+Für ein Update aus dem Git-Repository einschließlich eines neuen Basis-Images:
+
+```bash
+git pull --ff-only
+docker compose build --pull
+docker compose run --rm bot npm run register
+docker compose up -d --remove-orphans
+```
+
+Wenn der Build-Cache vollständig verworfen werden soll:
+
+```bash
+docker compose build --pull --no-cache
+docker compose up -d
+```
+
+## Installation auf Ubuntu/Debian ohne Container
 
 ```bash
 sudo apt update
@@ -184,6 +239,15 @@ für diesen Endpunkt signierte POST-Anfragen.
 
 ## Befehle registrieren und testen
 
+Mit Docker Compose:
+
+```bash
+docker compose run --rm bot npm run register
+docker compose restart bot
+```
+
+Bei der Installation ohne Container:
+
 ```bash
 cd /opt/dhbw-dcbot
 sudo -u dcbot npm run register
@@ -193,7 +257,7 @@ sudo systemctl restart dhbw-dcbot
 Danach zuerst `/createcoursespreview` und `/archivepreview` ausführen. Allgemeine Kategorien
 vor `/archiveall` mit `/archiveexception add` schützen.
 
-## Aktualisieren
+## Installation ohne Container aktualisieren
 
 ```bash
 cd /opt/dhbw-dcbot

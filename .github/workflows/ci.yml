@@ -14,24 +14,28 @@ permissions:
 
 jobs:
   quality:
-    name: Quality (Node ${{ matrix.node }})
+    name: Quality
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run check
       - run: npm test
-      - if: matrix.node == 20
-        run: npm audit --audit-level=moderate
-      - if: matrix.node == 20
-        run: test -x update.sh && bash -n update.sh
+      - run: npm audit --audit-level=moderate
+      - run: test -x update.sh && bash -n update.sh
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+      - run: npm test

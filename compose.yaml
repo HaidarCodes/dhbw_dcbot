@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      - default
+      - proxy
     environment:
       PORT: 3000
     ports:
@@ -18,3 +21,7 @@ volumes:
   bot-data:
     external: true
     name: dhbw-dcbot_bot-data
+
+networks:
+  proxy:
+    external: true

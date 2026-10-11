@@ -5,7 +5,7 @@
 
 Report it privately through the following channel:
 
-- **GitHub Security Advisories** (preferred) — open a private report at
+- **GitHub Security Advisories** — open a private report at
   <https://github.com/HaidarCodes/dhbw_dcbot/security/advisories/new>
 
 Please include, where possible:

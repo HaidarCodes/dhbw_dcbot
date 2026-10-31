@@ -23,8 +23,11 @@
     "dotenv": "^16.0.3",
     "express": "4.22.3"
   },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
   "devDependencies": {
-    "@eslint/js": "10.0.1",
-    "eslint": "10.11.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0"
   }
 }

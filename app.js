@@ -34,6 +34,9 @@ import {
   CakeInputError,
   completeCake,
   listCakeUsers,
+  presentCakeAddition,
+  presentCakeCompletion,
+  presentCakeList,
   startCakeModeration,
 } from './cake-moderation.js';
 
@@ -89,6 +92,10 @@ async function autocompleteCourseAlias(data) {
 
 function formatList(values) {
   return values.length > 0 ? values.join(', ') : 'keine';
+}
+
+function responseText({ content }) {
+  return { content, allowed_mentions: { parse: [] } };
 }
 
 function responseEmbed(title, description, color = COLORS.info, fields = []) {
@@ -246,37 +253,14 @@ async function executeCommand(data, userId) {
   switch (data.name) {
     case 'kuchen': {
       const result = await announceOwnCake(userId);
-      if (result.status === 'cooldown') {
-        return responseEmbed(
-          'Bitte kurz warten',
-          `Du kannst dich in ${Math.ceil(result.retryAfterMs / 1000)} Sekunden erneut eintragen.`,
-          COLORS.warning,
-        );
-      }
-      if (result.status === 'limit') {
-        return responseEmbed(
-          'Kuchenlimit erreicht',
-          'Du hast bereits 25 offene Kuchenmeldungen.',
-          COLORS.warning,
-        );
-      }
-      return responseEmbed(
-        'Kuchenmeldung erstellt',
-        `Du bist jetzt **${result.count}×** als Kuchenbringer eingetragen.`,
-        COLORS.success,
-      );
+      return responseText(presentCakeAddition(userId, result));
     }
     case 'cake': {
       const subcommand = data.options?.[0];
       if (subcommand?.name === 'add') {
-        const result = await announceCake(selectedUsername(subcommand.options));
-        return responseEmbed(
-          result.status === 'limit' ? 'Kuchenlimit erreicht' : 'Kuchenmeldung erstellt',
-          result.status === 'limit'
-            ? 'Die Person hat bereits 25 offene Kuchenmeldungen.'
-            : `Die Person ist jetzt **${result.count}×** eingetragen.`,
-          result.status === 'limit' ? COLORS.warning : COLORS.success,
-        );
+        const targetUserId = selectedUsername(subcommand.options);
+        const result = await announceCake(targetUserId);
+        return responseText(presentCakeAddition(targetUserId, result));
       }
       if (subcommand?.name === 'done') {
         try {
@@ -285,43 +269,17 @@ async function executeCommand(data, userId) {
             targetUserId,
             selectedAmount(subcommand.options),
           );
-          if (result.availableBefore === 0) {
-            return responseEmbed(
-              'Keine Kuchenmeldung gefunden',
-              'Für diese Person ist kein Kuchen offen.',
-            );
-          }
-          return responseEmbed(
-            result.failed.length > 0 ? 'Nicht vollständig erledigt' : 'Kuchen erledigt',
-            [
-              `**${result.removed}×** entfernt.`,
-              `**${result.remaining}×** weiterhin offen.`,
-              ...(result.failed.length > 0
-                ? [`**${result.failed.length}×** konnte nicht entfernt werden.`]
-                : []),
-            ].join('\n'),
-            result.failed.length > 0 ? COLORS.warning : COLORS.success,
-          );
+          return responseText(presentCakeCompletion(targetUserId, result));
         } catch (error) {
           if (error instanceof CakeInputError) {
-            return responseEmbed(
-              'Ungültige Anzahl',
-              error.message,
-              COLORS.error,
-            );
+            return responseText({ content: error.message });
           }
           throw error;
         }
       }
       if (subcommand?.name === 'list') {
         const entries = await listCakeUsers();
-        return responseEmbed(
-          'Aktuelle Kuchenmeldungen',
-          entries.length > 0
-            ? entries.map(({ userId: entryUserId, count }) =>
-              `- **${count}×** <@${entryUserId}>`).join('\n')
-            : 'Niemand ist aktuell eingetragen.',
-        );
+        return responseText(presentCakeList(entries));
       }
       throw new Error('Unknown cake subcommand');
     }

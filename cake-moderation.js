@@ -300,6 +300,20 @@ export async function completeCakeAnnouncements(
   });
 }
 
+export function presentCakeCompletion(userId, result) {
+  if (result.availableBefore === 0) {
+    return {
+      content: `Für <@${userId}> ist kein Kuchen offen.`,
+    };
+  }
+
+  const summary = `<@${userId}>: **${result.availableBefore}× → ${result.remaining}×**`;
+  const failureNote = result.failed.length > 0
+    ? `\n${result.failed.length} Meldung${result.failed.length === 1 ? '' : 'en'} konnte${result.failed.length === 1 ? '' : 'n'} nicht entfernt werden.`
+    : '';
+  return { content: `${summary}${failureNote}` };
+}
+
 export async function handleCakeMessage(message, guildId, clientUserId) {
   if (
     message.author.bot ||

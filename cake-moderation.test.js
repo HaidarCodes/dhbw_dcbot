@@ -13,6 +13,7 @@ import {
   handleCakeMessage,
   handleCakeReaction,
   parseCakeAmount,
+  presentCakeCompletion,
   postCakeAnnouncement,
 } from './cake-moderation.js';
 
@@ -271,6 +272,30 @@ test('completes all available announcements and reports deletion failures', asyn
   assert.equal(result.failed.length, 1);
   assert.equal(result.failed[0].messageId, '2');
   assert.equal(result.remaining, 1);
+});
+
+test('presents the affected user and cake counts before and after completion', () => {
+  assert.deepEqual(presentCakeCompletion('123', {
+    availableBefore: 3,
+    remaining: 1,
+    failed: [],
+  }), {
+    content: '<@123>: **3× → 1×**',
+  });
+  assert.deepEqual(presentCakeCompletion('123', {
+    availableBefore: 2,
+    remaining: 1,
+    failed: [{}],
+  }), {
+    content: '<@123>: **2× → 1×**\n1 Meldung konnte nicht entfernt werden.',
+  });
+  assert.deepEqual(presentCakeCompletion('123', {
+    availableBefore: 0,
+    remaining: 0,
+    failed: [],
+  }), {
+    content: 'Für <@123> ist kein Kuchen offen.',
+  });
 });
 
 test('enforces the active cake limit under parallel additions', async () => {

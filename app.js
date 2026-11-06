@@ -34,6 +34,7 @@ import {
   CakeInputError,
   completeCake,
   listCakeUsers,
+  presentCakeCompletion,
   startCakeModeration,
 } from './cake-moderation.js';
 
@@ -285,23 +286,11 @@ async function executeCommand(data, userId) {
             targetUserId,
             selectedAmount(subcommand.options),
           );
-          if (result.availableBefore === 0) {
-            return responseEmbed(
-              'Keine Kuchenmeldung gefunden',
-              'Für diese Person ist kein Kuchen offen.',
-            );
-          }
-          return responseEmbed(
-            result.failed.length > 0 ? 'Nicht vollständig erledigt' : 'Kuchen erledigt',
-            [
-              `**${result.removed}×** entfernt.`,
-              `**${result.remaining}×** weiterhin offen.`,
-              ...(result.failed.length > 0
-                ? [`**${result.failed.length}×** konnte nicht entfernt werden.`]
-                : []),
-            ].join('\n'),
-            result.failed.length > 0 ? COLORS.warning : COLORS.success,
-          );
+          const presentation = presentCakeCompletion(targetUserId, result);
+          return {
+            content: presentation.content,
+            allowed_mentions: { parse: [] },
+          };
         } catch (error) {
           if (error instanceof CakeInputError) {
             return responseEmbed(

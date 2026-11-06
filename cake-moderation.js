@@ -300,6 +300,24 @@ export async function completeCakeAnnouncements(
   });
 }
 
+export function presentCakeAddition(userId, result) {
+  if (result.status === 'cooldown') {
+    return { content: `<@${userId}>: Bitte warte noch ${Math.ceil(result.retryAfterMs / 1000)} Sekunden.` };
+  }
+  if (result.status === 'limit') {
+    return { content: `<@${userId}>: Kuchenlimit erreicht (25× offen).` };
+  }
+  return { content: `<@${userId}>: **${result.count - 1}× → ${result.count}×**` };
+}
+
+export function presentCakeList(entries) {
+  return {
+    content: entries.length > 0
+      ? truncateText(entries.map(({ userId, count }) => `<@${userId}>: **${count}×**`).join('\n'), 2000)
+      : 'Kein Kuchen offen.',
+  };
+}
+
 export function presentCakeCompletion(userId, result) {
   if (result.availableBefore === 0) {
     return {

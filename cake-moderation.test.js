@@ -13,7 +13,9 @@ import {
   handleCakeMessage,
   handleCakeReaction,
   parseCakeAmount,
+  presentCakeAddition,
   presentCakeCompletion,
+  presentCakeList,
   postCakeAnnouncement,
 } from './cake-moderation.js';
 
@@ -272,6 +274,32 @@ test('completes all available announcements and reports deletion failures', asyn
   assert.equal(result.failed.length, 1);
   assert.equal(result.failed[0].messageId, '2');
   assert.equal(result.remaining, 1);
+});
+
+test('presents cake additions and blocked additions as concise text', () => {
+  assert.deepEqual(presentCakeAddition('123', { status: 'added', count: 1 }), {
+    content: '<@123>: **0× → 1×**',
+  });
+  assert.deepEqual(presentCakeAddition('123', { status: 'added', count: 25 }), {
+    content: '<@123>: **24× → 25×**',
+  });
+  assert.deepEqual(presentCakeAddition('123', { status: 'limit', count: 25 }), {
+    content: '<@123>: Kuchenlimit erreicht (25× offen).',
+  });
+  assert.deepEqual(presentCakeAddition('123', { status: 'cooldown', retryAfterMs: 1001 }), {
+    content: '<@123>: Bitte warte noch 2 Sekunden.',
+  });
+});
+
+test('presents cake lists consistently within the Discord text limit', () => {
+  assert.deepEqual(presentCakeList([]), { content: 'Kein Kuchen offen.' });
+  assert.deepEqual(presentCakeList([{ userId: '123', count: 3 }, { userId: '456', count: 1 }]), {
+    content: '<@123>: **3×**\n<@456>: **1×**',
+  });
+  const entries = Array.from({ length: 100 }, () => ({ userId: '123456789012345678', count: 25 }));
+  const result = presentCakeList(entries);
+  assert.ok(result.content.length <= 2000);
+  assert.match(result.content, /… gekürzt$/u);
 });
 
 test('presents the affected user and cake counts before and after completion', () => {

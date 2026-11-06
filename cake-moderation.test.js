@@ -87,6 +87,8 @@ test('matches clear cake commitments and rejects ambiguous mentions', () => {
     'Ich backe Kuchen.',
     'Bringe Kuchen mit.',
     'Ich habe Kuchen dabei.',
+    'Kuchen',
+    'kuchen'
   ]) {
     assert.equal(containsCakeCommitment(content), true, content);
   }

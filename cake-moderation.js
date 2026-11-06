@@ -23,6 +23,7 @@ const CAKE_COMMITMENTS = [
   /\b(?:bring(?:e)?|nehm(?:e)?|hole|backe|besorge)\b[^.!?\n]{0,80}\bich\b/iu,
   /\bbring(?:e)?\b[^.!?\n]{0,80}\bkuchen\b[^.!?\n]{0,20}\bmit\b/iu,
   /\bich\b[^.!?\n]{0,80}\bkuchen\b[^.!?\n]{0,30}\b(?:dabei|mit)\b/iu,
+  /^\s*kuchen\s*$/iu
 ];
 let cakeClient;
 let cakeMutationQueue = Promise.resolve();
